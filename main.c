@@ -15,6 +15,19 @@ typedef struct Cpu {
     long cycle;
 } Cpu;
 
+/* Currently only supports the base RISC-V ISA that has fixed-length
+ * 32-bit instructions.  TODO: implement RISC-V ISA v2.2 1.2
+ * Instruction Length Encoding */
+typedef uint32_t Instruction;
+
+/* TODO */
+struct FetchBuffer {
+    int head;
+    int tail;
+    struct FetchBufferEntry {
+    } *entry;
+};
+
 static void fatal(const char *msg)
 {
     fprintf(stderr, "fatal: %s\n", msg);
@@ -72,6 +85,8 @@ int main()
     while (cpu.cycle < 10000) {
         cpu_cycle(&cpu);
     }
+
+    printf("Simulated %ld cycles\n", cpu.cycle);
 
     memory_destroy(&mem);
     return 0;
