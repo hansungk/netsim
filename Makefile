@@ -1,13 +1,13 @@
-CC=gcc
-CFLAGS=-g -Wall -fsanitize=address,leak
+# CC=gcc
+CFLAGS=-g -Wall -fsanitize=address
 
 all: cpu
 
 cpu: main.o
-	$(CC) $(CFLAGS) -o cpu $^
+	$(CXX) $(CFLAGS) -o cpu $^
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $<
+%.o: %.cc
+	$(CXX) $(CFLAGS) -c $<
 
 clean:
 	rm -f *.o cpu

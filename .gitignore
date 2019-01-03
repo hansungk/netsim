@@ -1,4 +1,5 @@
 *~
 *.o
 *.out
+riscv-spec-*.pdf
 cpu
