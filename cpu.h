@@ -3,6 +3,7 @@
 #define CPU_H
 
 #include <cstdlib>
+#include <fstream>
 #include <memory>
 
 struct Memory {
@@ -12,7 +13,7 @@ struct Memory {
     uint64_t size;
     std::unique_ptr<uint8_t[]> data;
 
-    void load_program(const char *path);
+    void load_program(std::ifstream &ifs);
 };
 
 typedef uint64_t MemAddr;
@@ -39,5 +40,7 @@ struct FetchBuffer {
     struct FetchBufferEntry {
     } *entry;
 };
+
+void read_elf_header(std::ifstream &ifs);
 
 #endif

@@ -1,7 +1,6 @@
 #include "cpu.h"
 
 #include <cstdio>
-#include <fstream>
 
 static void fatal(const char *msg) {
     fprintf(stderr, "fatal: %s\n", msg);
@@ -22,26 +21,31 @@ void Cpu::run_cycle() {
 }
 
 // TODO use mmap
-void Memory::load_program(const char *path) {
-    std::ifstream ifs(path, std::ios::in | std::ios::binary | std::ios::ate);
-
+void Memory::load_program(std::ifstream &ifs) {
     ifs.seekg(0, std::ios::end);
-    size_t filesize = static_cast<size_t>(ifs.tellg());
+    size_t filesize = ifs.tellg();
     ifs.seekg(0, std::ios::beg);
 
-    ifs.read(reinterpret_cast<char *>(data.get()), filesize);
-    // printf("Read %ld bytes\n", filesize);
+    char *inbuf = reinterpret_cast<char *>(data.get());
+    ifs.read(inbuf, filesize);
+    printf("Read %ld bytes\n", filesize);
 }
 
-int main() {
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s EXEC-FILE\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
     Memory mem(1024 * 1024);
     Cpu cpu(&mem);
 
-    mem.load_program("main.cc");
-
-    while (cpu.cycle < 10000) {
-        cpu.run_cycle();
+    std::ifstream ifs(argv[1], std::ios::in | std::ios::binary);
+    if (!ifs) {
+        fatal("failed to open file");
     }
+    read_elf_header(ifs);
+    // mem.load_program(ifs);
 
     printf("Simulated %ld cycles\n", cpu.cycle);
     return 0;

@@ -3,7 +3,7 @@ CFLAGS=-g -Wall -fsanitize=address
 
 all: cpu
 
-cpu: main.o
+cpu: main.o elf.o
 	$(CXX) $(CFLAGS) -o cpu $^
 
 %.o: %.cc
