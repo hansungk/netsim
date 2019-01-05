@@ -18,11 +18,19 @@ struct Memory {
 
 typedef uint64_t MemAddr;
 
+struct Context {
+};
+
 struct Cpu {
-    Cpu(Memory *mem): mem(mem) {}
-    Memory *mem;
+    Cpu(Memory &mem): mem(mem) {}
+    Memory &mem;
     MemAddr program_counter = 0;
     long cycle = 0;
+
+    void read_elf_header(std::ifstream &ifs);
+    // Load an ELF program at `path` into memory and initialize architectural
+    // states for execution.
+    void load_program(const char *path);
 
     void fetch();
     void run_cycle();
@@ -41,6 +49,8 @@ struct FetchBuffer {
     } *entry;
 };
 
-void read_elf_header(std::ifstream &ifs);
+// Decode length of the instruction that starts at mem.data[program_counter].
+int decode_length(Memory &mem, MemAddr program_counter);
+void fatal(const char *msg);
 
 #endif
