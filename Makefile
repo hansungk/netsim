@@ -1,13 +1,13 @@
 # CC=gcc
-CFLAGS=-g -Wall -fsanitize=address
+CXXFLAGS=-std=c++14 -g -Wall -fsanitize=address
 
 all: cpu
 
 cpu: main.o decode.o
-	$(CXX) $(CFLAGS) -o cpu $^
+	$(CXX) $(CXXFLAGS) -o cpu $^
 
 %.o: %.cc
-	$(CXX) $(CFLAGS) -c $<
+	$(CXX) $(CXXFLAGS) -c $<
 
 decode.o: decode.cc cpu.h
 

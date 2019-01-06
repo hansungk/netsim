@@ -20,13 +20,13 @@ void Cpu::run_cycle() {
 }
 
 void Cpu::read_elf_header(std::ifstream &ifs) {
-    // NOTE: Assumes RISCV64
-    Elf64_Ehdr elf_header;
+    // NOTE: Assumes RISCV32
+    Elf32_Ehdr elf_header;
     printf("Reading %zu bytes\n", sizeof(elf_header));
     ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
     program_counter = elf_header.e_entry;
 
-    Elf64_Phdr program_header;
+    Elf32_Phdr program_header;
     ifs.read(reinterpret_cast<char *>(&program_header), sizeof(program_header));
 }
 

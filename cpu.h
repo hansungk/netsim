@@ -18,6 +18,10 @@ struct Memory {
 
 typedef uint64_t MemAddr;
 
+struct RegisterFile {
+    uint32_t regs[32]; // Integer registers
+};
+
 struct Context {
 };
 
@@ -51,6 +55,7 @@ struct FetchBuffer {
 
 // Decode length of the instruction that starts at mem.data[program_counter].
 int decode_length(Memory &mem, MemAddr program_counter);
+void decode_inst(Instruction inst);
 void fatal(const char *msg);
 
 #endif
