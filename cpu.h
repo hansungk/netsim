@@ -2,9 +2,10 @@
 #ifndef CPU_H
 #define CPU_H
 
-#include <cstdlib>
 #include <fstream>
 #include <memory>
+#include <cstdlib>
+#include <cassert>
 
 struct Memory {
     Memory(uint64_t size): size(size) {
@@ -18,18 +19,34 @@ struct Memory {
 
 typedef uint64_t MemAddr;
 
+// Currently only supports the base RISC-V ISA that has fixed-length 32-bit
+// instructions.  TODO: implement RISC-V ISA v2.2 1.2 Instruction Length
+// Encoding
+typedef uint32_t Instruction;
+
 struct RegisterFile {
     uint32_t regs[32]; // Integer registers
+
+    uint32_t& operator[](int index) {
+        return regs[index];
+    }
 };
 
+// Programmer visible states for each hardware thread.
 struct Context {
+    RegisterFile regs;
+    MemAddr program_counter = 0;
 };
 
 struct Cpu {
     Cpu(Memory &mem): mem(mem) {}
     Memory &mem;
+    RegisterFile regs;
     MemAddr program_counter = 0;
     long cycle = 0;
+
+    // Fetch-Decode instruction buffer.
+    Instruction instruction_buffer;
 
     void read_elf_header(std::ifstream &ifs);
     // Load an ELF program at `path` into memory and initialize architectural
@@ -37,13 +54,9 @@ struct Cpu {
     void load_program(const char *path);
 
     void fetch();
+    void decode();
     void run_cycle();
 };
-
-// Currently only supports the base RISC-V ISA that has fixed-length 32-bit
-// instructions.  TODO: implement RISC-V ISA v2.2 1.2 Instruction Length
-// Encoding
-typedef uint32_t Instruction;
 
 /* TODO */
 struct FetchBuffer {
@@ -53,9 +66,6 @@ struct FetchBuffer {
     } *entry;
 };
 
-// Decode length of the instruction that starts at mem.data[program_counter].
-int decode_length(Memory &mem, MemAddr program_counter);
-void decode_inst(Instruction inst);
 void fatal(const char *msg);
 
 #endif

@@ -1,4 +1,5 @@
 #include "cpu.h"
+#include "decode.h"
 #include <cstdio>
 #include <elf.h>
 
@@ -9,13 +10,62 @@ void fatal(const char *msg) {
 
 void Cpu::fetch() {
     if (program_counter < mem.size) {
-        program_counter += decode_length(mem, program_counter);
+        int len = decode_instruction_length(mem, program_counter);
+        // TODO: Big endian.
+        instruction_buffer = *reinterpret_cast<Instruction *>(&mem.data[program_counter]);
+        program_counter += len;
+    }
+}
+
+void Cpu::decode() {
+    Instruction inst = instruction_buffer;
+    uint8_t opcode = take_bits(inst, 0, 7);
+    DecodeInfo_IType di;
+
+    switch (opcode) {
+    case OP_IMM:
+        di = decode_i_type(inst);
+        switch (di.funct3) {
+        case F_ADDI:
+            regs[di.rd] = regs[di.rs1] + sign_extend(di.imm, 12);
+            break;
+        case F_SLTI: {
+            int32_t rs1 = regs[di.rs1];
+            int32_t imm = sign_extend(di.imm, 12);
+            if (rs1 < imm)
+                regs[di.rd] = 1;
+            else
+                regs[di.rd] = 0;
+            break;
+        }
+        case F_SLTIU: {
+            uint32_t rs1 = regs[di.rs1];
+            uint32_t imm = sign_extend(di.imm, 12);
+            if (rs1 < imm)
+                regs[di.rd] = 1;
+            else
+                regs[di.rd] = 0;
+            break;
+        }
+        case F_ANDI:
+        case F_ORI:
+        case F_XORI:
+            break;
+        default:
+            fatal("decode: unrecognized funct");
+            break;
+        }
+        break;
+    default:
+        fatal("decode: unrecognized opcode");
+        break;
     }
 }
 
 void Cpu::run_cycle() {
-    printf("pc: %lx\n", program_counter);
+    printf("pc: 0x%lx\n", program_counter);
     fetch();
+    decode();
     cycle++;
 }
 
@@ -70,7 +120,7 @@ int main(int argc, char **argv) {
     }
     printf("\n");
 
-    for (int i = 0; i < 10; i++) {
+    for (;;) {
         cpu.run_cycle();
     }
 
