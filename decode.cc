@@ -21,8 +21,8 @@ int decode_instruction_length(Memory &mem, MemAddr program_counter) {
     return -1;
 }
 
-DecodeInfo_RType decode_r_type(Instruction inst) {
-    DecodeInfo_RType di;
+DecodeInfo decode_r_type(Instruction inst) {
+    DecodeInfo di;
     di.opcode = take_bits(inst, 0, 7);
     di.rd     = take_bits(inst, 7, 5);
     di.funct3 = take_bits(inst, 12, 3);
@@ -32,12 +32,20 @@ DecodeInfo_RType decode_r_type(Instruction inst) {
     return di;
 }
 
-DecodeInfo_IType decode_i_type(Instruction inst) {
-    DecodeInfo_IType di;
+DecodeInfo decode_i_type(Instruction inst) {
+    DecodeInfo di;
     di.opcode = take_bits(inst, 0, 7);
     di.rd     = take_bits(inst, 7, 5);
     di.funct3 = take_bits(inst, 12, 3);
     di.rs1    = take_bits(inst, 15, 5);
     di.imm    = take_bits(inst, 20, 12);
+    return di;
+}
+
+DecodeInfo decode_u_type(Instruction inst) {
+    DecodeInfo di;
+    di.opcode = take_bits(inst, 0, 7);
+    di.rd     = take_bits(inst, 7, 5);
+    di.imm    = take_bits(inst, 12, 20);
     return di;
 }

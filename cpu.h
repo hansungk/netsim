@@ -66,6 +66,6 @@ struct FetchBuffer {
     } *entry;
 };
 
-void fatal(const char *msg);
+void fatal(const char *fmt, ...);
 
 #endif

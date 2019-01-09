@@ -9,8 +9,8 @@ cpu: main.o decode.o
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) -c $<
 
-main.o: main.cc cpu.h decode.h
-decode.o: decode.cc decode.h
+main.o: main.cc decode.h cpu.h
+decode.o: decode.cc decode.h cpu.h
 
 clean:
 	rm -f *.o cpu
