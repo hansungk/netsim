@@ -3,13 +3,18 @@
 
 #include "cpu.h"
 
-#define OP_IMM  0b0010011
-#define F_ADDI  0b000
-#define F_SLTI  0b010
-#define F_SLTIU 0b011
-#define F_XORI  0b100
-#define F_ORI   0b110
-#define F_ANDI  0b111
+#define OP_IMM   0b0010011
+#define OP_LUI   0b0110111
+#define OP_AUIPC 0b0010111
+#define F_ADDI   0b000
+#define F_SLTI   0b010
+#define F_SLTIU  0b011
+#define F_XORI   0b100
+#define F_ORI    0b110
+#define F_ANDI   0b111
+#define F_SLLI   0b001
+#define F_SRLI   0b101
+#define F_SRAI   0b101
 
 struct DecodeInfo_RType {
     uint32_t funct7;

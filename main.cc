@@ -48,13 +48,33 @@ void Cpu::decode() {
             break;
         }
         case F_ANDI:
-        case F_ORI:
-        case F_XORI:
+            regs[di.rd] = regs[di.rs1] & sign_extend(di.imm, 12);
             break;
+        case F_ORI:
+            regs[di.rd] = regs[di.rs1] | sign_extend(di.imm, 12);
+            break;
+        case F_XORI:
+            regs[di.rd] = regs[di.rs1] ^ sign_extend(di.imm, 12);
+            break;
+        case F_SLLI:
+            regs[di.rd] = regs[di.rs1] << di.imm;
+            break;
+        case F_SRLI: { // F_SRAI
+            int shamt = di.imm & 0b11111;
+            if ((di.imm >> 5) == 0)
+                regs[di.rd] = regs[di.rs1] >> shamt;
+            else
+                regs[di.rd] = static_cast<int32_t>(regs[di.rs1]) >> shamt;
+            break;
+        }
         default:
             fatal("decode: unrecognized funct");
             break;
         }
+        break;
+    case OP_LUI:
+        break;
+    case OP_AUIPC:
         break;
     default:
         fatal("decode: unrecognized opcode");
@@ -115,6 +135,7 @@ int main(int argc, char **argv) {
     cpu.load_program(argv[1]);
 
     printf("Program entry point: 0x%lx\n", cpu.program_counter);
+    printf("Entry instruction: ");
     for (int i = 0; i < 4; i++) {
         printf("%02x ", mem.data[cpu.program_counter + i]);
     }
