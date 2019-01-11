@@ -15,7 +15,7 @@ int decode_instruction_length(Memory &mem, MemAddr program_counter) {
     } else if ((lowest & 0b1111111) != 0b1111111) {
         return 8;
     } else {
-        // TODO: >64-bit instructions.
+        // TODO: >64-bit instructions
         fatal("Decoding for >64b instructions is not implemented.");
     }
     return -1;
@@ -47,5 +47,19 @@ DecodeInfo decode_u_type(Instruction inst) {
     di.opcode = take_bits(inst, 0, 7);
     di.rd     = take_bits(inst, 7, 5);
     di.imm    = take_bits(inst, 12, 20);
+    return di;
+}
+
+DecodeInfo decode_j_type(Instruction inst) {
+    DecodeInfo di;
+    di.opcode = take_bits(inst, 0, 7);
+    di.rd     = take_bits(inst, 7, 5);
+    uint32_t imm19_12 = take_bits(inst, 12, 8);
+    uint32_t imm11 = take_bits(inst, 20, 1);
+    uint32_t imm10_1 = take_bits(inst, 21, 10);
+    uint32_t imm20 = take_bits(inst, 31, 1);
+    di.imm = (imm20 << 19) | (imm19_12 << 11) | (imm11 << 10) | imm10_1;
+    fprintf(stderr, "decode_j_type: off: %x\n", take_bits(inst, 12, 20));
+    fprintf(stderr, "decode_j_type: imm: %x\n", di.imm);
     return di;
 }

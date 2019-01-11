@@ -29,6 +29,7 @@ void Cpu::decode() {
     uint8_t opcode = take_bits(inst, 0, 7);
     DecodeInfo di;
 
+    fprintf(stderr, "pc: 0x%lx, inst: %08x\n", program_counter, inst);
     switch (opcode) {
     case OP_IMM:
         di = decode_i_type(inst);
@@ -168,6 +169,13 @@ void Cpu::decode() {
             break;
         }
         break;
+    case OP_JAL:
+        di = decode_j_type(inst);
+        // program_counter += sign_extend(di.imm, 12) << 1;
+        fprintf(stderr, "    jal x%u 0x%lx\n", di.rd, program_counter + (sign_extend(di.imm, 12) << 1));
+        break;
+    case OP_JALR:
+        break;
     default:
         fatal("decode: unrecognized opcode %x", opcode);
         break;
@@ -175,8 +183,6 @@ void Cpu::decode() {
 }
 
 void Cpu::run_cycle() {
-    printf("pc: 0x%lx\n", program_counter);
-
     // Right now, decode decodes AND also executes instructions for simplicity.
     // This has to be branched out as a separate function in the near future.
     // Also, currently this is a single-cycle implementation, NOT a pipelined
