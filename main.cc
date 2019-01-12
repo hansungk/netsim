@@ -25,6 +25,7 @@ void Cpu::fetch() {
 
 void Cpu::decode() {
     Instruction inst = instruction_buffer;
+    MemAddr target_program_counter = ~0;
     uint8_t opcode = take_bits(inst, 0, 7);
     DecodeInfo di;
 
@@ -93,7 +94,7 @@ void Cpu::decode() {
             break;
         }
         default:
-            fatal("decode: unrecognized funct");
+            fatal("decode: unrecognized funct for OP_IMM");
             break;
         }
         break;
@@ -170,16 +171,67 @@ void Cpu::decode() {
             break;
         }
         default:
-            fatal("decode: unrecognized funct");
+            fatal("decode: unrecognized funct for OP");
             break;
         }
         break;
     case OP_JAL:
         di = decode_j_type(inst);
-        next_program_counter = program_counter + (sign_extend(di.imm, 12) << 1);
-        fprintf(stderr, "    jal x%u 0x%lx\n", di.rd, program_counter + (sign_extend(di.imm, 12) << 1));
+        next_program_counter = program_counter + (sign_extend(di.imm, 20) << 1);
+        regs[di.rd] = program_counter + len;
+        fprintf(stderr, "    jal x%u %lx\n", di.rd, next_program_counter);
         break;
     case OP_JALR:
+        di = decode_i_type(inst);
+        // FIXME di.imm sign extend?
+        next_program_counter = regs[di.rs1] + sign_extend(di.imm, 12);
+        regs[di.rd] = program_counter + len;
+        fprintf(stderr, "    jalr x%u x%u %lx\n", di.rd, di.rs1, next_program_counter);
+        break;
+    case OP_BRANCH:
+        di = decode_b_type(inst);
+        target_program_counter = program_counter + (sign_extend(di.imm, 12) << 1);
+        switch (di.funct3) {
+        case F_BEQ:
+            if (regs[di.rs1] == regs[di.rs2]) {
+                next_program_counter = target_program_counter;
+            }
+            fprintf(stderr, "    beq x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            break;
+        case F_BNE:
+            if (regs[di.rs1] != regs[di.rs2]) {
+                next_program_counter = target_program_counter;
+            }
+            fprintf(stderr, "    bne x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            break;
+        case F_BLT:
+            if (static_cast<int32_t>(regs[di.rs1]) < static_cast<int32_t>(regs[di.rs2])) {
+                next_program_counter = target_program_counter;
+            }
+            fprintf(stderr, "    blt x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            break;
+        case F_BLTU:
+            if (regs[di.rs1] < regs[di.rs2]) {
+                next_program_counter = target_program_counter;
+            }
+            fprintf(stderr, "    bltu x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            break;
+        case F_BGE:
+            if (static_cast<int32_t>(regs[di.rs1]) >= static_cast<int32_t>(regs[di.rs2])) {
+                next_program_counter = target_program_counter;
+            }
+            fprintf(stderr, "    bge x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            break;
+        case F_BGEU:
+            if (regs[di.rs1] >= regs[di.rs2]) {
+                next_program_counter = target_program_counter;
+            }
+            fprintf(stderr, "    bgeu x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            break;
+        default:
+            fatal("decode: unrecognized funct for BRANCH");
+            break;
+        }
         break;
     default:
         fatal("decode: unrecognized opcode %x", opcode);

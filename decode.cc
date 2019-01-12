@@ -42,6 +42,20 @@ DecodeInfo decode_i_type(Instruction inst) {
     return di;
 }
 
+DecodeInfo decode_b_type(Instruction inst) {
+    DecodeInfo di;
+    di.opcode = take_bits(inst, 0, 7);
+    di.funct3 = take_bits(inst, 12, 3);
+    di.rs1    = take_bits(inst, 15, 5);
+    di.rs2    = take_bits(inst, 20, 5);
+    uint32_t imm11 = take_bits(inst, 7, 1);
+    uint32_t imm4_1 = take_bits(inst, 8, 4);
+    uint32_t imm10_5 = take_bits(inst, 25, 6);
+    uint32_t imm12 = take_bits(inst, 31, 1);
+    di.imm = (imm12 << 11) | (imm11 << 10) | (imm10_5 << 4) | imm4_1;
+    return di;
+}
+
 DecodeInfo decode_u_type(Instruction inst) {
     DecodeInfo di;
     di.opcode = take_bits(inst, 0, 7);
