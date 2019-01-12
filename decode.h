@@ -61,7 +61,7 @@ struct DecodeInfo_UType {
 };
 
 inline uint32_t sign_extend(uint32_t value, int len) {
-    return value << (32 - len) >> (32 - len);
+    return static_cast<int32_t>(value) << (32 - len) >> (32 - len);
 }
 
 inline uint32_t take_bits(Instruction inst, int pos, int len) {

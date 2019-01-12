@@ -27,6 +27,13 @@ typedef uint32_t Instruction;
 struct RegisterFile {
     uint32_t regs[32]; // Integer registers
 
+    RegisterFile() {
+        for (int i = 0; i < 32; i++) {
+            // Mark registers as uninitialized
+            regs[i] = 0;
+        }
+    }
+
     uint32_t& operator[](int index) {
         return regs[index];
     }
@@ -39,7 +46,7 @@ struct Context {
 };
 
 struct Cpu {
-    Cpu(Memory &mem): mem(mem) {}
+    Cpu(Memory &mem): mem(mem), regs() {}
     Memory &mem;
     RegisterFile regs;
     MemAddr program_counter = 0;
@@ -53,6 +60,8 @@ struct Cpu {
     // Load an ELF program at `path` into memory and initialize architectural
     // states for execution.
     void load_program(const char *path);
+    // Dump out register and PC values in a readable format.
+    void dump_regs();
 
     void fetch();
     void decode();

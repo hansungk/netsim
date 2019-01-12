@@ -186,7 +186,7 @@ void Cpu::decode() {
         // FIXME di.imm sign extend?
         next_program_counter = regs[di.rs1] + sign_extend(di.imm, 12);
         regs[di.rd] = program_counter + len;
-        fprintf(stderr, "    jalr x%u x%u %lx\n", di.rd, di.rs1, next_program_counter);
+        fprintf(stderr, "    jalr x%u x%u %+d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
         break;
     case OP_BRANCH:
         di = decode_b_type(inst);
@@ -239,6 +239,17 @@ void Cpu::decode() {
     }
 }
 
+void Cpu::dump_regs() {
+    fprintf(stderr, "pc: 0x%lx\n", program_counter);
+    for (int i = 0; i < 32; i++) {
+        fprintf(stderr, "x%2d: %#10x %6d ", i, regs[i], regs[i]);
+        if ((i + 1) % 4 == 0) {
+            fprintf(stderr, "\n");
+        }
+    }
+    fprintf(stderr, "\n");
+}
+
 void Cpu::run_cycle() {
     // Right now, decode decodes AND also executes instructions for simplicity.
     // This has to be branched out as a separate function in the near future.
@@ -246,6 +257,7 @@ void Cpu::run_cycle() {
     // one; fetch and decode both handle the same instruction.
     fetch();
     decode();
+    dump_regs();
     cycle++;
 }
 
