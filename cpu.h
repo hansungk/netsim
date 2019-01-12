@@ -43,6 +43,7 @@ struct Cpu {
     Memory &mem;
     RegisterFile regs;
     MemAddr program_counter = 0;
+    MemAddr next_program_counter = 0;
     long cycle = 0;
 
     // Fetch-Decode instruction buffer.

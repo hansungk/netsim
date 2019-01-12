@@ -17,10 +17,9 @@ void fatal(const char *fmt, ...) {
 
 void Cpu::fetch() {
     if (program_counter < mem.size) {
-        int len = decode_instruction_length(mem, program_counter);
+        program_counter = next_program_counter;
         // TODO: Big endian.
         instruction_buffer = *reinterpret_cast<Instruction *>(&mem.data[program_counter]);
-        program_counter += len;
     }
 }
 
@@ -29,7 +28,13 @@ void Cpu::decode() {
     uint8_t opcode = take_bits(inst, 0, 7);
     DecodeInfo di;
 
-    fprintf(stderr, "pc: 0x%lx, inst: %08x\n", program_counter, inst);
+    // fprintf(stderr, "pc: 0x%lx, inst: %08x\n", program_counter, inst);
+
+    // Default nextPC = PC + 4
+    int len = decode_instruction_length(mem, program_counter);
+    next_program_counter = program_counter + len;
+
+    fprintf(stderr, "pc: 0x%lx\n", program_counter);
     switch (opcode) {
     case OP_IMM:
         di = decode_i_type(inst);
@@ -171,7 +176,7 @@ void Cpu::decode() {
         break;
     case OP_JAL:
         di = decode_j_type(inst);
-        // program_counter += sign_extend(di.imm, 12) << 1;
+        next_program_counter = program_counter + (sign_extend(di.imm, 12) << 1);
         fprintf(stderr, "    jal x%u 0x%lx\n", di.rd, program_counter + (sign_extend(di.imm, 12) << 1));
         break;
     case OP_JALR:
@@ -196,7 +201,7 @@ void Cpu::read_elf_header(std::ifstream &ifs) {
     // NOTE: Assumes RISCV32
     Elf32_Ehdr elf_header;
     ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
-    program_counter = elf_header.e_entry;
+    next_program_counter = elf_header.e_entry;
 
     Elf32_Phdr program_header;
     ifs.read(reinterpret_cast<char *>(&program_header), sizeof(program_header));
