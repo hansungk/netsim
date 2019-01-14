@@ -10,6 +10,8 @@
 #define OP_BRANCH 0b1100011
 #define OP_IMM    0b0010011
 #define OP_OP     0b0110011
+#define OP_LOAD   0b0000011
+#define OP_STORE  0b0100011
 #define F_BEQ    0b000
 #define F_BNE    0b001
 #define F_BLT    0b100
@@ -35,6 +37,14 @@
 #define F_SLL    0b001
 #define F_SRL    0b101
 #define F_SRA    0b101
+#define F_LB     0b000
+#define F_LH     0b001
+#define F_LW     0b010
+#define F_LBU    0b100
+#define F_LHU    0b101
+#define F_SB     0b000
+#define F_SH     0b001
+#define F_SW     0b010
 
 struct DecodeInfo {
     uint32_t opcode;
@@ -71,6 +81,7 @@ inline uint32_t take_bits(Instruction inst, int pos, int len) {
 
 DecodeInfo decode_r_type(Instruction inst);
 DecodeInfo decode_i_type(Instruction inst);
+DecodeInfo decode_s_type(Instruction inst);
 DecodeInfo decode_b_type(Instruction inst);
 DecodeInfo decode_u_type(Instruction inst);
 DecodeInfo decode_j_type(Instruction inst);

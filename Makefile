@@ -1,16 +1,16 @@
-# CC=gcc
 CXXFLAGS=-std=c++14 -g -Wall -fsanitize=address
 
 all: cpu
 
-cpu: main.o decode.o
+cpu: main.o decode.o memory.o
 	$(CXX) $(CXXFLAGS) -o cpu $^
 
-%.o: %.cc
+%.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $<
 
-main.o: main.cc decode.h cpu.h
-decode.o: decode.cc decode.h cpu.h
+main.o: main.cpp decode.h cpu.h memory.h
+decode.o: decode.cpp decode.h cpu.h memory.h
+memory.o: memory.cpp memory.h
 
 clean:
 	rm -f *.o cpu

@@ -19,7 +19,7 @@ void Cpu::fetch() {
     if (program_counter < mem.size) {
         program_counter = next_program_counter;
         // TODO: Big endian.
-        instruction_buffer = *reinterpret_cast<Instruction *>(&mem.data[program_counter]);
+        instruction_buffer = mem.fetch32(program_counter);
     }
 }
 
@@ -42,7 +42,7 @@ void Cpu::decode() {
         switch (di.funct3) {
         case F_ADDI:
             regs[di.rd] = regs[di.rs1] + sign_extend(di.imm, 12);
-            fprintf(stderr, "    addi x%u x%u %u\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            fprintf(stderr, "    addi x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         case F_SLTI: {
             int32_t rs1 = regs[di.rs1];
@@ -52,7 +52,7 @@ void Cpu::decode() {
             } else {
                 regs[di.rd] = 0;
             }
-            fprintf(stderr, "    slti x%u x%u %u\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            fprintf(stderr, "    slti x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         }
         case F_SLTIU: {
@@ -63,33 +63,33 @@ void Cpu::decode() {
             } else {
                 regs[di.rd] = 0;
             }
-            fprintf(stderr, "    sltiu x%u x%u %u\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            fprintf(stderr, "    sltiu x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         }
         case F_ANDI:
             regs[di.rd] = regs[di.rs1] & sign_extend(di.imm, 12);
-            fprintf(stderr, "    andi x%u x%u %u\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            fprintf(stderr, "    andi x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         case F_ORI:
             regs[di.rd] = regs[di.rs1] | sign_extend(di.imm, 12);
-            fprintf(stderr, "    ori x%u x%u %u\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            fprintf(stderr, "    ori x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         case F_XORI:
             regs[di.rd] = regs[di.rs1] ^ sign_extend(di.imm, 12);
-            fprintf(stderr, "    xori x%u x%u %u\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            fprintf(stderr, "    xori x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         case F_SLLI:
             regs[di.rd] = regs[di.rs1] << di.imm;
-            fprintf(stderr, "    slli x%u x%u %u\n", di.rd, di.rs1, di.imm);
+            fprintf(stderr, "    slli x%u x%u %d\n", di.rd, di.rs1, di.imm);
             break;
         case F_SRLI: {
             int shamt = di.imm & 0b11111;
             if ((di.imm >> 5) == 0) { // F_SRLI
                 regs[di.rd] = regs[di.rs1] >> shamt;
-                fprintf(stderr, "    srli x%u x%u %u\n", di.rd, di.rs1, shamt);
+                fprintf(stderr, "    srli x%u x%u %d\n", di.rd, di.rs1, shamt);
             } else { // F_SRAI
                 regs[di.rd] = static_cast<int32_t>(regs[di.rs1]) >> shamt;
-                fprintf(stderr, "    srai x%u x%u %u\n", di.rd, di.rs1, shamt);
+                fprintf(stderr, "    srai x%u x%u %d\n", di.rd, di.rs1, shamt);
             }
             break;
         }
@@ -177,7 +177,7 @@ void Cpu::decode() {
         break;
     case OP_JAL:
         di = decode_j_type(inst);
-        next_program_counter = program_counter + (sign_extend(di.imm, 20) << 1);
+        next_program_counter = program_counter + sign_extend(di.imm, 20);
         regs[di.rd] = program_counter + len;
         fprintf(stderr, "    jal x%u %lx\n", di.rd, next_program_counter);
         break;
@@ -185,12 +185,13 @@ void Cpu::decode() {
         di = decode_i_type(inst);
         // FIXME di.imm sign extend?
         next_program_counter = regs[di.rs1] + sign_extend(di.imm, 12);
+        next_program_counter = next_program_counter >> 1 << 1;
         regs[di.rd] = program_counter + len;
         fprintf(stderr, "    jalr x%u x%u %+d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
         break;
     case OP_BRANCH:
         di = decode_b_type(inst);
-        target_program_counter = program_counter + (sign_extend(di.imm, 12) << 1);
+        target_program_counter = program_counter + sign_extend(di.imm, 12);
         switch (di.funct3) {
         case F_BEQ:
             if (regs[di.rs1] == regs[di.rs2]) {
@@ -233,6 +234,60 @@ void Cpu::decode() {
             break;
         }
         break;
+    case OP_LOAD: {
+        di = decode_i_type(inst);
+        MemAddr addr = regs[di.rs1] + sign_extend(di.imm, 12);
+
+        switch (di.funct3) {
+        case F_LB:
+            regs[di.rd] = sign_extend(mem.fetch8(addr), 8);
+            fprintf(stderr, "    lb x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            break;
+        case F_LBU:
+            regs[di.rd] = static_cast<uint32_t>(mem.fetch8(addr));
+            fprintf(stderr, "    lbu x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            break;
+        case F_LH:
+            regs[di.rd] = sign_extend(mem.fetch16(addr), 16);
+            fprintf(stderr, "    lh x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            break;
+        case F_LHU:
+            regs[di.rd] = static_cast<uint32_t>(mem.fetch16(addr));
+            fprintf(stderr, "    lhu x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            break;
+        case F_LW:
+            regs[di.rd] = mem.fetch32(addr);
+            fprintf(stderr, "    lw x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            break;
+        default:
+            fatal("decode: unrecognized funct for LOAD");
+            break;
+        }
+        break;
+    }
+    case OP_STORE: {
+        di = decode_s_type(inst);
+        MemAddr addr = regs[di.rs1] + sign_extend(di.imm, 12);
+
+        switch (di.funct3) {
+        case F_SB:
+            mem.store8(addr, regs[di.rs2]);
+            fprintf(stderr, "    sb x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            break;
+        case F_SH:
+            mem.store16(addr, regs[di.rs2]);
+            fprintf(stderr, "    sh x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            break;
+        case F_SW:
+            mem.store32(addr, regs[di.rs2]);
+            fprintf(stderr, "    sw x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            break;
+        default:
+            fatal("decode: unrecognized funct for STORE");
+            break;
+        }
+        break;
+    }
     default:
         fatal("decode: unrecognized opcode %x", opcode);
         break;
@@ -257,7 +312,7 @@ void Cpu::run_cycle() {
     // one; fetch and decode both handle the same instruction.
     fetch();
     decode();
-    dump_regs();
+    // dump_regs();
     cycle++;
 }
 

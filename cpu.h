@@ -2,22 +2,10 @@
 #ifndef CPU_H
 #define CPU_H
 
+#include "memory.h"
 #include <fstream>
-#include <memory>
 #include <cstdlib>
 #include <cassert>
-
-struct Memory {
-    Memory(uint64_t size): size(size) {
-        data = std::make_unique<uint8_t[]>(size);
-    }
-    uint64_t size;
-    std::unique_ptr<uint8_t[]> data;
-
-    void load_program(std::ifstream &ifs);
-};
-
-typedef uint64_t MemAddr;
 
 // Currently only supports the base RISC-V ISA that has fixed-length 32-bit
 // instructions.  TODO: implement RISC-V ISA v2.2 1.2 Instruction Length
