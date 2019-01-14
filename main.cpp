@@ -29,13 +29,15 @@ void Cpu::decode() {
     uint8_t opcode = take_bits(inst, 0, 7);
     DecodeInfo di;
 
-    // fprintf(stderr, "pc: 0x%lx, inst: %08x\n", program_counter, inst);
+    // fprintf(stderr, "pc: 0x%x, inst: %08x\n", program_counter, inst);
 
     // Default nextPC = PC + 4
     int len = decode_instruction_length(mem, program_counter);
     next_program_counter = program_counter + len;
 
-    fprintf(stderr, "pc: 0x%lx\n", program_counter);
+    regs[0] = 0;
+
+    fprintf(stderr, "pc: 0x%x\n", program_counter);
     switch (opcode) {
     case OP_IMM:
         di = decode_i_type(inst);
@@ -179,7 +181,7 @@ void Cpu::decode() {
         di = decode_j_type(inst);
         next_program_counter = program_counter + sign_extend(di.imm, 20);
         regs[di.rd] = program_counter + len;
-        fprintf(stderr, "    jal x%u %lx\n", di.rd, next_program_counter);
+        fprintf(stderr, "    jal x%u %x\n", di.rd, next_program_counter);
         break;
     case OP_JALR:
         di = decode_i_type(inst);
@@ -197,37 +199,37 @@ void Cpu::decode() {
             if (regs[di.rs1] == regs[di.rs2]) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    beq x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            fprintf(stderr, "    beq x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BNE:
             if (regs[di.rs1] != regs[di.rs2]) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    bne x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            fprintf(stderr, "    bne x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BLT:
             if (static_cast<int32_t>(regs[di.rs1]) < static_cast<int32_t>(regs[di.rs2])) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    blt x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            fprintf(stderr, "    blt x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BLTU:
             if (regs[di.rs1] < regs[di.rs2]) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    bltu x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            fprintf(stderr, "    bltu x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BGE:
             if (static_cast<int32_t>(regs[di.rs1]) >= static_cast<int32_t>(regs[di.rs2])) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    bge x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            fprintf(stderr, "    bge x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BGEU:
             if (regs[di.rs1] >= regs[di.rs2]) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    bgeu x%u x%u %lx\n", di.rs1, di.rs2, target_program_counter);
+            fprintf(stderr, "    bgeu x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         default:
             fatal("decode: unrecognized funct for BRANCH");
@@ -271,16 +273,16 @@ void Cpu::decode() {
 
         switch (di.funct3) {
         case F_SB:
-            mem.store8(addr, regs[di.rs2]);
             fprintf(stderr, "    sb x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            mem.store8(addr, regs[di.rs2]);
             break;
         case F_SH:
-            mem.store16(addr, regs[di.rs2]);
             fprintf(stderr, "    sh x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            mem.store16(addr, regs[di.rs2]);
             break;
         case F_SW:
-            mem.store32(addr, regs[di.rs2]);
             fprintf(stderr, "    sw x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            mem.store32(addr, regs[di.rs2]);
             break;
         default:
             fatal("decode: unrecognized funct for STORE");
@@ -295,9 +297,9 @@ void Cpu::decode() {
 }
 
 void Cpu::dump_regs() {
-    fprintf(stderr, "pc: 0x%lx\n", program_counter);
+    fprintf(stderr, "pc: 0x%x\n", program_counter);
     for (int i = 0; i < 32; i++) {
-        fprintf(stderr, "x%2d: %#10x %6d ", i, regs[i], regs[i]);
+        fprintf(stderr, "x%2d: %#10x %9d ", i, regs[i], regs[i]);
         if ((i + 1) % 4 == 0) {
             fprintf(stderr, "\n");
         }
@@ -312,7 +314,7 @@ void Cpu::run_cycle() {
     // one; fetch and decode both handle the same instruction.
     fetch();
     decode();
-    // dump_regs();
+    dump_regs();
     cycle++;
 }
 
@@ -334,6 +336,9 @@ void Cpu::load_program(const char *path) {
 
     read_elf_header(ifs);
     mem.load_program(ifs);
+
+    // Set stack pointer
+    regs[2] = 0x7fffff;
 }
 
 // TODO use mmap
@@ -355,12 +360,12 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    Memory mem(1024 * 1024);
+    Memory mem(16 * 1024 * 1024);
     Cpu cpu(mem);
 
     cpu.load_program(argv[1]);
 
-    printf("Program entry point: 0x%lx\n", cpu.program_counter);
+    printf("Program entry point: 0x%x\n", cpu.program_counter);
     printf("Entry instruction: ");
     for (int i = 0; i < 4; i++) {
         printf("%02x ", mem.data[cpu.program_counter + i]);

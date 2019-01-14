@@ -1,5 +1,6 @@
 *~
 *.o
 *.out
+*.objdump
 riscv-spec-*.pdf
 cpu

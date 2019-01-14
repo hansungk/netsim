@@ -4,7 +4,7 @@
 
 #include <memory>
 
-typedef uint64_t MemAddr;
+typedef uint32_t MemAddr;
 
 struct Memory {
     Memory(uint64_t size): size(size) {
