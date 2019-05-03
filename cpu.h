@@ -39,7 +39,7 @@ struct Cpu {
     RegisterFile regs;
     MemAddr program_counter = 0;
     MemAddr next_program_counter = 0;
-    long cycle = 0;
+    long n_cycle = 0;
 
     // Fetch-Decode instruction buffer.
     Instruction instruction_buffer;
@@ -53,7 +53,7 @@ struct Cpu {
 
     void fetch();
     void decode();
-    void run_cycle();
+    void cycle();
 };
 
 /* TODO */

@@ -1,5 +1,6 @@
 #include "cpu.h"
 #include "decode.h"
+#include <vector>
 #include <cstdio>
 #include <cstdarg>
 #include <elf.h>
@@ -38,14 +39,13 @@ void Cpu::decode() {
 
     regs[0] = 0;
 
-    fprintf(stderr, "pc: 0x%x\n", program_counter);
     switch (opcode) {
     case OP_IMM:
         di = decode_i_type(inst);
         switch (di.funct3) {
         case F_ADDI:
             regs[di.rd] = regs[di.rs1] + sign_extend(di.imm, 12);
-            fprintf(stderr, "    addi x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            printf("    addi x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         case F_SLTI: {
             int32_t rs1 = regs[di.rs1];
@@ -55,7 +55,7 @@ void Cpu::decode() {
             } else {
                 regs[di.rd] = 0;
             }
-            fprintf(stderr, "    slti x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            printf("    slti x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         }
         case F_SLTIU: {
@@ -66,33 +66,33 @@ void Cpu::decode() {
             } else {
                 regs[di.rd] = 0;
             }
-            fprintf(stderr, "    sltiu x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            printf("    sltiu x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         }
         case F_ANDI:
             regs[di.rd] = regs[di.rs1] & sign_extend(di.imm, 12);
-            fprintf(stderr, "    andi x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            printf("    andi x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         case F_ORI:
             regs[di.rd] = regs[di.rs1] | sign_extend(di.imm, 12);
-            fprintf(stderr, "    ori x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            printf("    ori x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         case F_XORI:
             regs[di.rd] = regs[di.rs1] ^ sign_extend(di.imm, 12);
-            fprintf(stderr, "    xori x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+            printf("    xori x%u x%u %d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         case F_SLLI:
             regs[di.rd] = regs[di.rs1] << di.imm;
-            fprintf(stderr, "    slli x%u x%u %d\n", di.rd, di.rs1, di.imm);
+            printf("    slli x%u x%u %d\n", di.rd, di.rs1, di.imm);
             break;
         case F_SRLI: {
             int shamt = di.imm & 0b11111;
             if ((di.imm >> 5) == 0) { // F_SRLI
                 regs[di.rd] = regs[di.rs1] >> shamt;
-                fprintf(stderr, "    srli x%u x%u %d\n", di.rd, di.rs1, shamt);
+                printf("    srli x%u x%u %d\n", di.rd, di.rs1, shamt);
             } else { // F_SRAI
                 regs[di.rd] = static_cast<int32_t>(regs[di.rs1]) >> shamt;
-                fprintf(stderr, "    srai x%u x%u %d\n", di.rd, di.rs1, shamt);
+                printf("    srai x%u x%u %d\n", di.rd, di.rs1, shamt);
             }
             break;
         }
@@ -104,12 +104,12 @@ void Cpu::decode() {
     case OP_LUI:
         di = decode_u_type(inst);
         regs[di.rd] = di.imm << 12;
-        fprintf(stderr, "    lui x%u 0x%x\n", di.rd, di.imm);
+        printf("    lui x%u 0x%x\n", di.rd, di.imm);
         break;
     case OP_AUIPC:
         di = decode_u_type(inst);
         regs[di.rd] = program_counter + (di.imm << 12);
-        fprintf(stderr, "    auipc x%u 0x%x\n", di.rd, di.imm);
+        printf("    auipc x%u 0x%x\n", di.rd, di.imm);
         break;
     case OP_OP:
         di = decode_r_type(inst);
@@ -117,10 +117,10 @@ void Cpu::decode() {
         case F_ADD: { // F_SUB
             if (di.funct7 == 0) {// F_ADD
                 regs[di.rd] = regs[di.rs1] + regs[di.rs2];
-                fprintf(stderr, "    add x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+                printf("    add x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             } else { // F_SUB
                 regs[di.rd] = regs[di.rs1] - regs[di.rs2];
-                fprintf(stderr, "    sub x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+                printf("    sub x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             }
             break;
         }
@@ -131,7 +131,7 @@ void Cpu::decode() {
                 regs[di.rd] = 1;
             else
                 regs[di.rd] = 0;
-            fprintf(stderr, "    slt x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+            printf("    slt x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             break;
         }
         case F_SLTU: {
@@ -141,35 +141,35 @@ void Cpu::decode() {
                 regs[di.rd] = 1;
             else
                 regs[di.rd] = 0;
-            fprintf(stderr, "    sltu x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+            printf("    sltu x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             break;
         }
         case F_AND:
             regs[di.rd] = regs[di.rs1] & regs[di.rs2];
-            fprintf(stderr, "    and x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+            printf("    and x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             break;
         case F_OR:
             regs[di.rd] = regs[di.rs1] | regs[di.rs2];
-            fprintf(stderr, "    or x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+            printf("    or x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             break;
         case F_XOR:
             regs[di.rd] = regs[di.rs1] ^ regs[di.rs2];
-            fprintf(stderr, "    xor x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+            printf("    xor x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             break;
         case F_SLL: {
             int shamt = regs[di.rs2] & 0b11111;
             regs[di.rd] = regs[di.rs1] << shamt;
-            fprintf(stderr, "    sll x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+            printf("    sll x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             break;
         }
         case F_SRL: {
             int shamt = regs[di.rs2] & 0b11111;
             if (di.funct7 == 0) { // F_SRL
                 regs[di.rd] = regs[di.rs1] >> shamt;
-                fprintf(stderr, "    srl x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+                printf("    srl x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             } else { // F_SRA
                 regs[di.rd] = static_cast<int32_t>(regs[di.rs1]) >> shamt;
-                fprintf(stderr, "    sra x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
+                printf("    sra x%u x%u x%u\n", di.rd, di.rs1, di.rs2);
             }
             break;
         }
@@ -182,7 +182,7 @@ void Cpu::decode() {
         di = decode_j_type(inst);
         next_program_counter = program_counter + sign_extend(di.imm, 20);
         regs[di.rd] = program_counter + len;
-        fprintf(stderr, "    jal x%u %x\n", di.rd, next_program_counter);
+        printf("    jal x%u %x\n", di.rd, next_program_counter);
         break;
     case OP_JALR:
         di = decode_i_type(inst);
@@ -190,7 +190,7 @@ void Cpu::decode() {
         next_program_counter = regs[di.rs1] + sign_extend(di.imm, 12);
         next_program_counter = next_program_counter >> 1 << 1;
         regs[di.rd] = program_counter + len;
-        fprintf(stderr, "    jalr x%u x%u %+d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
+        printf("    jalr x%u x%u %+d\n", di.rd, di.rs1, sign_extend(di.imm, 12));
         break;
     case OP_BRANCH:
         di = decode_b_type(inst);
@@ -200,37 +200,37 @@ void Cpu::decode() {
             if (regs[di.rs1] == regs[di.rs2]) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    beq x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
+            printf("    beq x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BNE:
             if (regs[di.rs1] != regs[di.rs2]) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    bne x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
+            printf("    bne x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BLT:
             if (static_cast<int32_t>(regs[di.rs1]) < static_cast<int32_t>(regs[di.rs2])) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    blt x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
+            printf("    blt x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BLTU:
             if (regs[di.rs1] < regs[di.rs2]) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    bltu x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
+            printf("    bltu x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BGE:
             if (static_cast<int32_t>(regs[di.rs1]) >= static_cast<int32_t>(regs[di.rs2])) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    bge x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
+            printf("    bge x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         case F_BGEU:
             if (regs[di.rs1] >= regs[di.rs2]) {
                 next_program_counter = target_program_counter;
             }
-            fprintf(stderr, "    bgeu x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
+            printf("    bgeu x%u x%u %x\n", di.rs1, di.rs2, target_program_counter);
             break;
         default:
             fatal("decode: unrecognized funct for BRANCH");
@@ -244,23 +244,23 @@ void Cpu::decode() {
         switch (di.funct3) {
         case F_LB:
             regs[di.rd] = sign_extend(mem.fetch8(addr), 8);
-            fprintf(stderr, "    lb x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            printf("    lb x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
             break;
         case F_LBU:
             regs[di.rd] = static_cast<uint32_t>(mem.fetch8(addr));
-            fprintf(stderr, "    lbu x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            printf("    lbu x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
             break;
         case F_LH:
             regs[di.rd] = sign_extend(mem.fetch16(addr), 16);
-            fprintf(stderr, "    lh x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            printf("    lh x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
             break;
         case F_LHU:
             regs[di.rd] = static_cast<uint32_t>(mem.fetch16(addr));
-            fprintf(stderr, "    lhu x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            printf("    lhu x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
             break;
         case F_LW:
             regs[di.rd] = mem.fetch32(addr);
-            fprintf(stderr, "    lw x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
+            printf("    lw x%u %d(x%u)\n", di.rd, sign_extend(di.imm, 12), di.rs1);
             break;
         default:
             fatal("decode: unrecognized funct for LOAD");
@@ -274,15 +274,18 @@ void Cpu::decode() {
 
         switch (di.funct3) {
         case F_SB:
-            fprintf(stderr, "    sb x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            printf("    sb x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            printf("storing %u (0x%x) to *0x%x\n", regs[di.rs2], regs[di.rs2], addr);
             mem.store8(addr, regs[di.rs2]);
             break;
         case F_SH:
-            fprintf(stderr, "    sh x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            printf("    sh x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            printf("storing %u (0x%x) to *0x%x\n", regs[di.rs2], regs[di.rs2], addr);
             mem.store16(addr, regs[di.rs2]);
             break;
         case F_SW:
-            fprintf(stderr, "    sw x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            printf("    sw x%u %d(x%u)\n", di.rs2, sign_extend(di.imm, 12), di.rs1);
+            printf("storing %u (0x%x) to *0x%x\n", regs[di.rs2], regs[di.rs2], addr);
             mem.store32(addr, regs[di.rs2]);
             break;
         default:
@@ -308,17 +311,16 @@ void Cpu::decode() {
 }
 
 void Cpu::dump_regs() {
-    fprintf(stderr, "pc: 0x%x\n", program_counter);
+    printf("pc: 0x%x\n", program_counter);
     for (int i = 0; i < 32; i++) {
-        fprintf(stderr, "x%2d: %#10x %9d ", i, regs[i], regs[i]);
-        if ((i + 1) % 4 == 0) {
-            fprintf(stderr, "\n");
-        }
+        printf("x%2d: %#10x %9d ", i, regs[i], regs[i]);
+        if ((i + 1) % 4 == 0)
+            printf("\n");
     }
-    fprintf(stderr, "\n");
+    printf("\n");
 }
 
-void Cpu::run_cycle() {
+void Cpu::cycle() {
     // Right now, decode decodes *and* also executes instructions for
     // simplicity.  This has to be branched out as a separate function in the
     // future.  Also, currently this is a single-cycle implementation, not a
@@ -326,43 +328,46 @@ void Cpu::run_cycle() {
     fetch();
     decode();
     dump_regs();
-    cycle++;
+    n_cycle++;
 }
 
-void Cpu::read_elf_header(std::ifstream &ifs) {
-    // NOTE: Assumes RISCV32
-    Elf32_Ehdr elf_header;
-    ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
-    next_program_counter = elf_header.e_entry;
-
-    Elf32_Phdr program_header;
-    ifs.read(reinterpret_cast<char *>(&program_header), sizeof(program_header));
+static void load_segment(Memory &mem, std::ifstream &ifs, Elf32_Phdr ph) {
+    ifs.seekg(ph.p_offset, std::ios::beg);
+    char *inbuf = reinterpret_cast<char *>(mem.data.get() + ph.p_vaddr);
+    ifs.read(inbuf, ph.p_filesz);
+    printf("Loaded segment from %x into %x, size %x\n", ph.p_offset, ph.p_vaddr, ph.p_filesz);
 }
 
+// TODO: use mmap?
 void Cpu::load_program(const char *path) {
     std::ifstream ifs(path, std::ios::in | std::ios::binary);
     if (!ifs) {
         fatal("failed to open file");
     }
 
-    read_elf_header(ifs);
-    mem.load_program(ifs);
+    // NOTE: Assumes RISCV32
+    Elf32_Ehdr elf_header;
+    ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
+    next_program_counter = elf_header.e_entry;
+    printf("%d program headers\n", elf_header.e_phnum);
+
+    std::vector<Elf32_Phdr> program_headers;
+
+    for (int i = 0; i < elf_header.e_phnum; i++) {
+        Elf32_Phdr ph;
+        ifs.read(reinterpret_cast<char *>(&ph), sizeof(ph));
+        program_headers.push_back(ph);
+    }
+
+    for (const auto ph : program_headers) {
+        if (ph.p_type != PT_LOAD)
+            continue;
+
+        load_segment(mem, ifs, ph);
+    }
 
     // Set stack pointer
     regs[2] = 0x7fffff;
-}
-
-// TODO use mmap
-void Memory::load_program(std::ifstream &ifs) {
-    ifs.seekg(0, std::ios::end);
-    size_t filesize = ifs.tellg();
-    ifs.seekg(0, std::ios::beg);
-
-    // XXX: fixed load offset (RISC-V: 0x10000, x86-64: 0x400000)
-    int offset = 0x10000;
-    char *inbuf = reinterpret_cast<char *>(data.get() + offset);
-    ifs.read(inbuf, filesize);
-    printf("Read %ld bytes\n", filesize);
 }
 
 int main(int argc, char **argv) {
@@ -384,9 +389,9 @@ int main(int argc, char **argv) {
     printf("\n");
 
     for (;;) {
-        cpu.run_cycle();
+        cpu.cycle();
     }
 
-    printf("Simulated %ld cycles\n", cpu.cycle);
+    printf("Simulated %ld cycles\n", cpu.n_cycle);
     return 0;
 }
