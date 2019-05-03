@@ -1,6 +1,6 @@
 #include "decode.h"
 
-int decode_instruction_length(Memory &mem, MemAddr program_counter) {
+int decode_inst_length(Memory &mem, MemAddr program_counter) {
     // Assumes little endian.  Since the length of the instruction is encoded
     // at the lowest-addressed byte, we only need to examine a single byte
     // right at the `program_counter` under little endian.

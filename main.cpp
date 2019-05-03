@@ -34,7 +34,7 @@ void Cpu::decode() {
     // fprintf(stderr, "pc: 0x%x, inst: %08x\n", program_counter, inst);
 
     // Default nextPC = PC + 4
-    int len = decode_instruction_length(mem, program_counter);
+    int len = decode_inst_length(mem, program_counter);
     next_program_counter = program_counter + len;
 
     regs[0] = 0;
@@ -299,7 +299,11 @@ void Cpu::decode() {
 
         switch (di.funct3) {
         case F_PRIV:
-            fatal("decode: ECALL unimplemented");
+            if (regs[17] == 93) {
+                printf("exit ECALL\n");
+                exit(0); // FIXME
+            } else
+                fatal("decode: ECALL unimplemented");
             break;
         }
         break;

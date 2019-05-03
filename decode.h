@@ -77,7 +77,7 @@ inline uint32_t sign_extend(uint32_t value, int len) {
 }
 
 inline uint32_t take_bits(Instruction inst, int pos, int len) {
-    Instruction mask = ~((~0) << len);
+    Instruction mask = ~((~0u) << len);
     return (inst >> pos) & mask;
 }
 
@@ -88,6 +88,6 @@ DecodeInfo decode_b_type(Instruction inst);
 DecodeInfo decode_u_type(Instruction inst);
 DecodeInfo decode_j_type(Instruction inst);
 // Decode length of the instruction that starts at mem.data[program_counter].
-int decode_instruction_length(Memory &mem, MemAddr program_counter);
+int decode_inst_length(Memory &mem, MemAddr program_counter);
 
 #endif
