@@ -26,27 +26,27 @@ void Cpu::fetch() {
 }
 
 static void dump_i_type(const char *op, uint32_t rd, uint32_t rs1, uint32_t imm) {
-    printf("%s %s,%s,%d\n", op, RegisterFile::get_name(rd),
-           RegisterFile::get_name(rs1), imm);
+    printf("%s %s,%s,%d\n", op, RegFile::get_name(rd),
+           RegFile::get_name(rs1), imm);
 }
 
 static void dump_u_type(const char *op, uint32_t rd, uint32_t imm) {
-    printf("%s %s,0x%x\n", op, RegisterFile::get_name(rd), imm);
+    printf("%s %s,0x%x\n", op, RegFile::get_name(rd), imm);
 }
 
 static void dump_r_type(const char *op, uint32_t rd, uint32_t rs1, uint32_t rs2) {
-    printf("%s %s,%s,%s\n", op, RegisterFile::get_name(rd),
-           RegisterFile::get_name(rs1), RegisterFile::get_name(rs2));
+    printf("%s %s,%s,%s\n", op, RegFile::get_name(rd),
+           RegFile::get_name(rs1), RegFile::get_name(rs2));
 }
 
 static void dump_b_type(const char *op, uint32_t rs1, uint32_t rs2, uint32_t pc) {
-    printf("%s %s,%s,0x%x\n", op, RegisterFile::get_name(rs1),
-           RegisterFile::get_name(rs2), pc);
+    printf("%s %s,%s,0x%x\n", op, RegFile::get_name(rs1),
+           RegFile::get_name(rs2), pc);
 }
 
 static void dump_mem_type(const char *op, uint32_t rd_rs2, uint32_t rs1, uint32_t imm) {
-    printf("%s %s,%d(%s)\n", op, RegisterFile::get_name(rd_rs2), imm,
-           RegisterFile::get_name(rs1));
+    printf("%s %s,%d(%s)\n", op, RegFile::get_name(rd_rs2), imm,
+           RegFile::get_name(rs1));
 }
 
 void Cpu::decode() {
@@ -206,7 +206,7 @@ void Cpu::decode() {
         di = decode_j_type(inst);
         next_program_counter = program_counter + sign_extend(di.imm, 20);
         regs[di.rd] = program_counter + len;
-        printf("jal %s,0x%x\n", RegisterFile::get_name(di.rd),
+        printf("jal %s,0x%x\n", RegFile::get_name(di.rd),
                next_program_counter);
         break;
     case OP_JALR:
@@ -216,8 +216,8 @@ void Cpu::decode() {
         next_program_counter = next_program_counter >> 1 << 1;
         regs[di.rd] = program_counter + len;
         // TODO dump all the variants, e.g. jr and ret
-        printf("jalr %s,%s,%+d\n", RegisterFile::get_name(di.rd),
-               RegisterFile::get_name(di.rs1), sign_extend(di.imm, 12));
+        printf("jalr %s,%s,%+d\n", RegFile::get_name(di.rd),
+               RegFile::get_name(di.rs1), sign_extend(di.imm, 12));
         break;
     case OP_BRANCH:
         di = decode_b_type(inst);
@@ -319,13 +319,15 @@ void Cpu::decode() {
     case OP_SYSTEM: {
         di = decode_i_type(inst);
 
+        printf("ecall\n");
+
         switch (di.funct3) {
         case F_PRIV:
             if (regs[17] == 93) {
-                printf("exit ECALL\n");
+                printf("return code was %d\n", regs[10]);
                 exit(0); // FIXME
             } else
-                fatal("decode: ECALL unimplemented");
+                fatal("decode: unimplemented ECALL: %d", regs[17]);
             break;
         }
         break;
@@ -339,7 +341,7 @@ void Cpu::decode() {
 void Cpu::dump_regs() {
     printf("pc: 0x%x\n", program_counter);
     for (int i = 0; i < 32; i++) {
-        printf("%3s: %#10x %9d ", RegisterFile::get_name(i), regs[i], regs[i]);
+        printf("%3s: %#10x %9d ", RegFile::get_name(i), regs[i], regs[i]);
         if ((i + 1) % 4 == 0)
             printf("\n");
     }
@@ -347,10 +349,10 @@ void Cpu::dump_regs() {
 }
 
 void Cpu::cycle() {
-    // Right now, decode decodes *and* also executes instructions for
-    // simplicity.  This has to be branched out as a separate function in the
-    // future.  Also, currently this is a single-cycle implementation, not a
-    // pipelined one; fetch and decode both handle the same instruction.
+    // Right now, decode decodes *and* also executes instructions.  This has to
+    // be branched out as a separate function in the future.  Also, currently
+    // this is a single-cycle implementation, not a pipelined one; i.e. fetch
+    // and decode handle the same instruction.
     fetch();
     decode();
     dump_regs();
@@ -364,7 +366,6 @@ static void load_segment(Memory &mem, std::ifstream &ifs, Elf32_Phdr ph) {
     printf("Loaded segment from 0x%x into 0x%x (size 0x%x)\n", ph.p_offset, ph.p_vaddr, ph.p_filesz);
 }
 
-// TODO: use mmap?
 void Cpu::load_program(const char *path) {
     std::ifstream ifs(path, std::ios::in | std::ios::binary);
     if (!ifs) {

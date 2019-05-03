@@ -86,7 +86,5 @@ DecodeInfo decode_j_type(Instruction inst) {
     uint32_t imm10_1 = take_bits(inst, 21, 10);
     uint32_t imm20 = take_bits(inst, 31, 1);
     di.imm = (imm20 << 20) | (imm19_12 << 12) | (imm11 << 11) | (imm10_1 << 1);
-    // fprintf(stderr, "decode_j_type: off: %x\n", take_bits(inst, 12, 20));
-    // fprintf(stderr, "decode_j_type: imm: %x\n", di.imm);
     return di;
 }
