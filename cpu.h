@@ -5,6 +5,7 @@
 #include "memory.h"
 #include <fstream>
 #include <cstdlib>
+#include <cstring>
 #include <cassert>
 
 // Currently only supports the base RISC-V ISA that has fixed-length 32-bit
@@ -12,19 +13,52 @@
 // Encoding
 typedef uint32_t Instruction;
 
+static const char *register_names[] {
+    "0",
+    "ra",
+    "sp",
+    "gp",
+    "tp",
+    "t0",
+    "t1",
+    "t2",
+    "fp",
+    "s1",
+    "a0",
+    "a1",
+    "a2",
+    "a3",
+    "a4",
+    "a5",
+    "a6",
+    "a7",
+    "s2",
+    "s3",
+    "s4",
+    "s5",
+    "s6",
+    "s7",
+    "s8",
+    "s9",
+    "s10",
+    "s11",
+    "t3",
+    "t4",
+    "t5",
+    "t6",
+};
+
 struct RegisterFile {
     uint32_t regs[32]; // Integer registers
 
     RegisterFile() {
-        for (int i = 0; i < 32; i++) {
-            // Mark registers as uninitialized
-            regs[i] = 0;
-        }
+        // Mark registers as uninitialized
+        std::memset(regs, 0, sizeof(regs));
     }
 
-    uint32_t& operator[](int index) {
-        return regs[index];
-    }
+    uint32_t &operator[](int index) { return regs[index]; }
+
+    static const char *get_name(int index) { return register_names[index]; }
 };
 
 // Programmer visible states for each hardware thread.
