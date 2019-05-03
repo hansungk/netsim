@@ -1,6 +1,7 @@
 #include "cpu.h"
 #include "decode.h"
 #include <cstdio>
+#include <cstdarg>
 #include <elf.h>
 
 void fatal(const char *fmt, ...) {
@@ -290,6 +291,16 @@ void Cpu::decode() {
         }
         break;
     }
+    case OP_SYSTEM: {
+        di = decode_i_type(inst);
+
+        switch (di.funct3) {
+        case F_PRIV:
+            fatal("decode: ECALL unimplemented");
+            break;
+        }
+        break;
+    }
     default:
         fatal("decode: unrecognized opcode %x", opcode);
         break;
@@ -308,10 +319,10 @@ void Cpu::dump_regs() {
 }
 
 void Cpu::run_cycle() {
-    // Right now, decode decodes AND also executes instructions for simplicity.
-    // This has to be branched out as a separate function in the near future.
-    // Also, currently this is a single-cycle implementation, NOT a pipelined
-    // one; fetch and decode both handle the same instruction.
+    // Right now, decode decodes *and* also executes instructions for
+    // simplicity.  This has to be branched out as a separate function in the
+    // future.  Also, currently this is a single-cycle implementation, not a
+    // pipelined one; fetch and decode both handle the same instruction.
     fetch();
     decode();
     dump_regs();

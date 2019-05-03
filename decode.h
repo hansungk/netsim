@@ -12,6 +12,7 @@
 #define OP_OP     0b0110011
 #define OP_LOAD   0b0000011
 #define OP_STORE  0b0100011
+#define OP_SYSTEM 0b1110011
 #define F_BEQ    0b000
 #define F_BNE    0b001
 #define F_BLT    0b100
@@ -45,6 +46,7 @@
 #define F_SB     0b000
 #define F_SH     0b001
 #define F_SW     0b010
+#define F_PRIV   0b000
 
 struct DecodeInfo {
     uint32_t opcode;
