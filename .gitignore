@@ -15,5 +15,5 @@ rules.ninja
 *.o
 *.out
 *.objdump
-riscv-spec-*.pdf
+riscv-*.pdf
 cpu
