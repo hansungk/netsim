@@ -393,8 +393,9 @@ void Cpu::load_program(const char *path) {
   if (!validate_header(elf_header))
     fatal("not a valid ELF32 file");
 
-  next_program_counter = elf_header.e_entry;
   printf("ELF: %d program headers\n", elf_header.e_phnum);
+  printf("Program entry point: 0x%x\n", elf_header.e_entry);
+  next_program_counter = elf_header.e_entry;
 
   std::vector<Elf32_Phdr> program_headers;
 
@@ -426,12 +427,6 @@ int main(int argc, char **argv) {
   Cpu cpu(mem);
 
   cpu.load_program(argv[1]);
-
-  printf("Program entry point: 0x%x\n", cpu.program_counter);
-  printf("Entry instruction: ");
-  for (int i = 0; i < 4; i++)
-    printf("%02x ", mem.data[cpu.program_counter + i]);
-  printf("\n");
 
   while (true) {
     cpu.cycle();
