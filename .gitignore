@@ -15,6 +15,6 @@ rules.ninja
 *.o
 *.out
 *.objdump
-*-riscv32
+*-riscv32*
 riscv-*.pdf
 cpu
