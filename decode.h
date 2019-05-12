@@ -49,36 +49,36 @@
 #define F_PRIV  0b000
 
 struct DecodeInfo {
-    uint32_t opcode;
-    uint32_t rd;
-    uint32_t rs1;
-    uint32_t rs2;
-    uint32_t funct3;
-    uint32_t funct7;
-    uint32_t imm;
+  uint32_t opcode;
+  uint32_t rd;
+  uint32_t rs1;
+  uint32_t rs2;
+  uint32_t funct3;
+  uint32_t funct7;
+  uint32_t imm;
 };
 
 struct DecodeInfo_IType {
-    uint32_t imm;
-    uint32_t rs1;
-    uint32_t funct3;
-    uint32_t rd;
-    uint32_t opcode;
+  uint32_t imm;
+  uint32_t rs1;
+  uint32_t funct3;
+  uint32_t rd;
+  uint32_t opcode;
 };
 
 struct DecodeInfo_UType {
-    uint32_t imm;
-    uint32_t rd;
-    uint32_t opcode;
+  uint32_t imm;
+  uint32_t rd;
+  uint32_t opcode;
 };
 
 inline uint32_t sign_extend(uint32_t value, int len) {
-    return static_cast<int32_t>(value) << (32 - len) >> (32 - len);
+  return static_cast<int32_t>(value) << (32 - len) >> (32 - len);
 }
 
 inline uint32_t take_bits(Instruction inst, int pos, int len) {
-    Instruction mask = ~((~0u) << len);
-    return (inst >> pos) & mask;
+  Instruction mask = ~((~0u) << len);
+  return (inst >> pos) & mask;
 }
 
 DecodeInfo decode_r_type(Instruction inst);
