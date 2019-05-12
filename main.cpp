@@ -371,11 +371,9 @@ static void load_segment(Memory &mem, std::ifstream &ifs, Elf32_Phdr ph) {
          ph.p_vaddr, ph.p_filesz);
 }
 
-static bool check_valid_header(const Elf32_Ehdr &ehdr) {
-  if (!(ehdr.e_ident[0] == EI_MAG0 &&
-        ehdr.e_ident[1] == EI_MAG1 &&
-        ehdr.e_ident[2] == EI_MAG2 &&
-        ehdr.e_ident[3] == EI_MAG3))
+static bool validate_header(const Elf32_Ehdr &ehdr) {
+  if (!(ehdr.e_ident[EI_MAG0] == ELFMAG0 && ehdr.e_ident[EI_MAG1] == ELFMAG1 &&
+        ehdr.e_ident[EI_MAG2] == ELFMAG2 && ehdr.e_ident[EI_MAG3] == ELFMAG3))
     return false;
   if (ehdr.e_ident[4] != ELFCLASS32)
     return false;
@@ -392,7 +390,7 @@ void Cpu::load_program(const char *path) {
   // Validate the ELF file.
   Elf32_Ehdr elf_header;
   ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
-  if (!check_valid_header(elf_header))
+  if (!validate_header(elf_header))
     fatal("not a valid ELF32 file");
 
   next_program_counter = elf_header.e_entry;
