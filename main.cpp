@@ -371,14 +371,30 @@ static void load_segment(Memory &mem, std::ifstream &ifs, Elf32_Phdr ph) {
          ph.p_vaddr, ph.p_filesz);
 }
 
+static bool check_valid_header(const Elf32_Ehdr &ehdr) {
+  if (!(ehdr.e_ident[0] == EI_MAG0 &&
+        ehdr.e_ident[1] == EI_MAG1 &&
+        ehdr.e_ident[2] == EI_MAG2 &&
+        ehdr.e_ident[3] == EI_MAG3))
+    return false;
+  if (ehdr.e_ident[4] != ELFCLASS32)
+    return false;
+  if (ehdr.e_ident[5] != ELFDATA2LSB)
+    return false;
+  return true;
+}
+
 void Cpu::load_program(const char *path) {
   std::ifstream ifs(path, std::ios::in | std::ios::binary);
   if (!ifs)
     fatal("failed to open file");
 
-  // NOTE: Assumes RISCV32
+  // Validate the ELF file.
   Elf32_Ehdr elf_header;
   ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
+  if (!check_valid_header(elf_header))
+    fatal("not a valid ELF32 file");
+
   next_program_counter = elf_header.e_entry;
   printf("ELF: %d program headers\n", elf_header.e_phnum);
 
