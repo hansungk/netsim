@@ -4,7 +4,7 @@ int decode_inst_length(Memory &mem, MemAddr program_counter) {
   // Assumes little endian.  Since the length of the instruction is encoded
   // at the lowest-addressed byte, we only need to examine a single byte
   // right at the `program_counter` under little endian.
-  uint8_t lowest = mem.data[program_counter];
+  uint8_t lowest = mem.data()[program_counter];
 
   if ((lowest & 0b11) != 0b11) {
     return 2;

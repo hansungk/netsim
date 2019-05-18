@@ -18,11 +18,9 @@ void fatal(const char *fmt, ...) {
 }
 
 void Cpu::fetch() {
-  if (program_counter < mem.size) {
-    program_counter = next_program_counter;
-    // TODO: Big endian.
-    instruction_buffer = mem.fetch32(program_counter);
-  }
+  program_counter = next_program_counter;
+  // TODO: Big endian.
+  instruction_buffer = mmu.read32(program_counter);
 }
 
 static void dump_i_type(const char *op, uint32_t rd, uint32_t rs1,
@@ -62,7 +60,8 @@ void Cpu::decode() {
   // fprintf(stderr, "pc: 0x%x, inst: %08x\n", program_counter, inst);
 
   // Default nextPC = PC + 4
-  int len = decode_inst_length(mem, program_counter);
+  // int len = decode_inst_length(mem, program_counter);
+  int len = 4; // FIXME
   next_program_counter = program_counter + len;
 
   regs[0] = 0;
@@ -269,23 +268,23 @@ void Cpu::decode() {
 
     switch (di.funct3) {
     case F_LB:
-      regs[di.rd] = sign_extend(mem.fetch8(addr), 8);
+      regs[di.rd] = sign_extend(mmu.read8(addr), 8);
       dump_mem_type("lb", di.rd, di.rs1, sign_extend(di.imm, 12));
       break;
     case F_LBU:
-      regs[di.rd] = static_cast<uint32_t>(mem.fetch8(addr));
+      regs[di.rd] = static_cast<uint32_t>(mmu.read8(addr));
       dump_mem_type("lbu", di.rd, di.rs1, sign_extend(di.imm, 12));
       break;
     case F_LH:
-      regs[di.rd] = sign_extend(mem.fetch16(addr), 16);
+      regs[di.rd] = sign_extend(mmu.read16(addr), 16);
       dump_mem_type("lh", di.rd, di.rs1, sign_extend(di.imm, 12));
       break;
     case F_LHU:
-      regs[di.rd] = static_cast<uint32_t>(mem.fetch16(addr));
+      regs[di.rd] = static_cast<uint32_t>(mmu.read16(addr));
       dump_mem_type("lhu", di.rd, di.rs1, sign_extend(di.imm, 12));
       break;
     case F_LW:
-      regs[di.rd] = mem.fetch32(addr);
+      regs[di.rd] = mmu.read32(addr);
       dump_mem_type("lw", di.rd, di.rs1, sign_extend(di.imm, 12));
       break;
     default:
@@ -302,17 +301,17 @@ void Cpu::decode() {
     case F_SB:
       dump_mem_type("sb", di.rs2, di.rs1, sign_extend(di.imm, 12));
       printf("storing %u (0x%x) to *0x%x\n", regs[di.rs2], regs[di.rs2], addr);
-      mem.store8(addr, regs[di.rs2]);
+      mmu.write8(addr, regs[di.rs2]);
       break;
     case F_SH:
       dump_mem_type("sh", di.rs2, di.rs1, sign_extend(di.imm, 12));
       printf("storing %u (0x%x) to *0x%x\n", regs[di.rs2], regs[di.rs2], addr);
-      mem.store16(addr, regs[di.rs2]);
+      mmu.write16(addr, regs[di.rs2]);
       break;
     case F_SW:
       dump_mem_type("sw", di.rs2, di.rs1, sign_extend(di.imm, 12));
       printf("storing %u (0x%x) to *0x%x\n", regs[di.rs2], regs[di.rs2], addr);
-      mem.store32(addr, regs[di.rs2]);
+      mmu.write32(addr, regs[di.rs2]);
       break;
     default:
       fatal("decode: unrecognized funct for STORE");
@@ -330,8 +329,10 @@ void Cpu::decode() {
       if (regs[17] == 93) {
         printf("return code was %d\n", regs[10]);
         exit(0); // FIXME
-      } else
+      } else {
+        mmu.get_page_table().print();
         fatal("decode: unimplemented ECALL: %d", regs[17]);
+      }
       break;
     }
     break;
@@ -363,10 +364,22 @@ void Cpu::cycle() {
   n_cycle++;
 }
 
-static void load_segment(Memory &mem, std::ifstream &ifs, Elf32_Phdr ph) {
+static void load_segment(Mmu &mmu, std::ifstream &ifs, Elf32_Phdr ph) {
+  if (ph.p_offset % page_size)
+    fatal("%s: segment offset is not aligned to the page boundary", __func__);
+
+  std::vector<uint8_t> buf(page_size);
   ifs.seekg(ph.p_offset, std::ios::beg);
-  char *inbuf = reinterpret_cast<char *>(mem.data.get() + ph.p_vaddr);
-  ifs.read(inbuf, ph.p_filesz);
+  auto addr = ph.p_vaddr;
+  // Load the segment page by page onto the memory
+  for (long rem = ph.p_filesz; rem > 0; rem -= page_size) {
+    auto readsize = (rem < page_size) ? rem : page_size;
+    ifs.read(reinterpret_cast<char *>(buf.data()), readsize);
+    buf.resize(readsize);
+    mmu.write_page(addr, buf);
+    addr += page_size;
+  }
+
   printf("Loaded segment from 0x%x into 0x%x (size 0x%x)\n", ph.p_offset,
          ph.p_vaddr, ph.p_filesz);
 }
@@ -382,7 +395,7 @@ static bool validate_header(const Elf32_Ehdr &ehdr) {
   return true;
 }
 
-void Cpu::load_program(const char *path) {
+void load_program(Cpu &cpu, const char *path) {
   std::ifstream ifs(path, std::ios::in | std::ios::binary);
   if (!ifs)
     fatal("failed to open file");
@@ -395,11 +408,10 @@ void Cpu::load_program(const char *path) {
 
   printf("ELF: %d program headers\n", elf_header.e_phnum);
   printf("Program entry point: 0x%x\n", elf_header.e_entry);
-  next_program_counter = elf_header.e_entry;
-
-  std::vector<Elf32_Phdr> program_headers;
+  cpu.set_npc(elf_header.e_entry);
 
   // Read all the ELF program headers.
+  std::vector<Elf32_Phdr> program_headers;
   for (int i = 0; i < elf_header.e_phnum; i++) {
     Elf32_Phdr ph;
     ifs.read(reinterpret_cast<char *>(&ph), sizeof(ph));
@@ -410,11 +422,12 @@ void Cpu::load_program(const char *path) {
   for (const auto ph : program_headers) {
     if (ph.p_type != PT_LOAD)
       continue;
-    load_segment(mem, ifs, ph);
+    load_segment(cpu.get_mmu(), ifs, ph);
   }
 
-  // Set stack pointer.
-  regs[2] = 0x7fffff;
+  // Set the stack pointer.
+  // cpu.regs[2] = ~static_cast<uint32_t>(0);
+  cpu.regs[2] = 0xffffdd60; // FIXME: arbitrary value, taken from qemu-riscv32
 }
 
 int main(int argc, char **argv) {
@@ -423,10 +436,10 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  Memory mem(16 * 1024 * 1024);
+  Memory mem;
   Cpu cpu(mem);
 
-  cpu.load_program(argv[1]);
+  load_program(cpu, argv[1]);
 
   while (true) {
     cpu.cycle();

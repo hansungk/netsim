@@ -19,20 +19,22 @@ static const char *register_names[]{
     "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
 };
 
-struct RegFile {
-  uint32_t regs[32]; // Integer registers
-
+/// Register file.
+class RegFile {
+public:
   RegFile() {
     // Mark registers as uninitialized
     std::memset(regs, 0, sizeof(regs));
   }
 
   uint32_t &operator[](int index) { return regs[index]; }
-
   static const char *get_name(int index) { return register_names[index]; }
+
+private:
+  uint32_t regs[32]; // Integer registers
 };
 
-// Programmer visible states for each hardware thread.
+/// User visible states for each hardware thread.
 struct Context {
   RegFile regs;
   MemAddr program_counter = 0;
@@ -40,28 +42,32 @@ struct Context {
 
 class Cpu {
 public:
-  Cpu(Memory &mem) : mem(mem), regs() {}
+  Cpu(Memory &mem) : mmu(mem), regs() {}
 
   // Load an ELF program at `path` into memory and initialize architectural
   // states for execution.
   void load_program(const char *path);
   void cycle();
 
-  MemAddr program_counter = 0;
   long n_cycle = 0;
 
-private:
+  void set_npc(MemAddr npc) { next_program_counter = npc; }
+
+// private:
   void fetch();
   void decode();
   void read_elf_header(std::ifstream &ifs);
   // Dump out register and PC values in a readable format.
   void dump_regs();
 
+  Mmu &get_mmu() { return mmu; }
+
   // Fetch-Decode instruction buffer.
   Instruction instruction_buffer;
 
-  Memory &mem;
+  Mmu mmu;
   RegFile regs;
+  MemAddr program_counter = 0;
   MemAddr next_program_counter = 0;
 };
 
