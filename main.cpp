@@ -64,7 +64,7 @@ void Cpu::decode() {
   int len = 4; // FIXME
   next_program_counter = program_counter + len;
 
-  regs[0] = 0;
+  regs[zero] = 0;
 
   switch (opcode) {
   case OP_IMM:
@@ -326,12 +326,12 @@ void Cpu::decode() {
 
     switch (di.funct3) {
     case F_PRIV:
-      if (regs[17] == 93) {
-        printf("return code was %d\n", regs[10]);
+      if (regs[a0] == 93) {
+        printf("return code was %d\n", regs[a0]);
         exit(0); // FIXME
       } else {
         mmu.get_page_table().print();
-        fatal("decode: unimplemented ECALL: %d", regs[17]);
+        fatal("decode: unimplemented ECALL: %d", regs[a7]);
       }
       break;
     }
@@ -426,8 +426,8 @@ void load_program(Cpu &cpu, const char *path) {
   }
 
   // Set the stack pointer.
-  // cpu.regs[2] = ~static_cast<uint32_t>(0);
-  cpu.regs[2] = 0xffffdd60; // FIXME: arbitrary value, taken from qemu-riscv32
+  // cpu.regs[sp] = ~static_cast<uint32_t>(0);
+  cpu.regs[sp] = 0xffffdd60; // FIXME: arbitrary value, taken from qemu-riscv32
 }
 
 int main(int argc, char **argv) {
