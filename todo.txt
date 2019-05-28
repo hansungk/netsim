@@ -4,3 +4,20 @@
   virtual memory space.
 - syscall proxy using pk
 - Implement supervisor-mode ISA
+
+* Latency model
+- "ready" bit?
+  - Closely resembles HW implementation
+  - Simpler, but may be too low level? This is basically how HDLs do
+    it.
+- Event queue?
+  - Probably the most popular method. (gem5, MARSSx86)
+  - How do we combine this with a detailed cycle-accurate OoO engine?
+    Doesn't an OoO engine always do _something_ at every cycle?
+- Latency object?
+  - Basically what SimpleScalar does
+  - Return <lat, value> pair from access functions
+  - Maybe useful in implementing 'oracle', ahead-of-time simulation features
+  - More complicated code
+- FIFO queues?
+  - Overkill?
