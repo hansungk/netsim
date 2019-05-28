@@ -343,25 +343,25 @@ void Cpu::decode() {
   }
 }
 
-void Cpu::dump_regs() {
-  printf("pc: 0x%x\n", program_counter);
-  for (int i = 0; i < 32; i++) {
-    printf("%3s: %#10x %9d ", RegFile::get_name(i), regs[i], regs[i]);
-    if ((i + 1) % 4 == 0)
-      printf("\n");
-  }
-  printf("\n");
+void dump_regs(const RegFile &regs) {
+    for (int i = 0; i < 32; i++) {
+        printf("%3s: %#10x %9d ", RegFile::get_name(i), regs[i], regs[i]);
+        if ((i + 1) % 4 == 0)
+            printf("\n");
+    }
+    printf("\n");
 }
 
 void Cpu::cycle() {
-  // Right now, decode decodes *and* also executes instructions.  This has to
-  // be branched out as a separate function in the future.  Also, currently
-  // this is a single-cycle implementation, not a pipelined one; i.e. fetch
-  // and decode handle the same instruction.
-  fetch();
-  decode();
-  dump_regs();
-  n_cycle++;
+    // Right now, decode decodes *and* also executes instructions.  This has to
+    // be branched out as a separate function in the future.  Also, currently
+    // this is a single-cycle implementation, not a pipelined one; i.e. fetch
+    // and decode handle the same instruction.
+    fetch();
+    decode();
+    printf("pc: 0x%x\n", program_counter);
+    dump_regs(regs);
+    n_cycle++;
 }
 
 static void load_segment(Mmu &mmu, std::ifstream &ifs, Elf32_Phdr ph) {

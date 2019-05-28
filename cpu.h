@@ -44,6 +44,7 @@ public:
   }
 
   uint32_t &operator[](int index) { return regs[index]; }
+  const uint32_t &operator[](int index) const { return regs[index]; }
   static const char *get_name(int index) { return register_names[index]; }
 
 private:
@@ -55,6 +56,9 @@ struct Context {
   RegFile regs;
   MemAddr program_counter = 0;
 };
+
+// Dump out register and PC values in a readable format.
+void dump_regs(const RegFile &reg);
 
 class Cpu {
 public:
@@ -73,8 +77,6 @@ public:
   void fetch();
   void decode();
   void read_elf_header(std::ifstream &ifs);
-  // Dump out register and PC values in a readable format.
-  void dump_regs();
 
   Mmu &get_mmu() { return mmu; }
 
