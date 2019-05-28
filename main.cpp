@@ -23,33 +23,65 @@ void Cpu::fetch() {
   instruction_buffer = mmu.read32(program_counter);
 }
 
-static void dump_i_type(const char *op, uint32_t rd, uint32_t rs1,
-                        uint32_t imm) {
-  printf("%s %s,%s,%d\n", op, RegFile::get_name(rd), RegFile::get_name(rs1),
-         imm);
+namespace {
+void dump_i_type(const char *op, uint32_t rd, uint32_t rs1, uint32_t imm) {
+    printf("%s %s,%s,%d\n", op, RegFile::get_name(rd), RegFile::get_name(rs1),
+           imm);
 }
 
-static void dump_u_type(const char *op, uint32_t rd, uint32_t imm) {
-  printf("%s %s,0x%x\n", op, RegFile::get_name(rd), imm);
+void dump_u_type(const char *op, uint32_t rd, uint32_t imm) {
+    printf("%s %s,0x%x\n", op, RegFile::get_name(rd), imm);
 }
 
-static void dump_r_type(const char *op, uint32_t rd, uint32_t rs1,
-                        uint32_t rs2) {
-  printf("%s %s,%s,%s\n", op, RegFile::get_name(rd), RegFile::get_name(rs1),
-         RegFile::get_name(rs2));
+void dump_r_type(const char *op, uint32_t rd, uint32_t rs1, uint32_t rs2) {
+    printf("%s %s,%s,%s\n", op, RegFile::get_name(rd), RegFile::get_name(rs1),
+           RegFile::get_name(rs2));
 }
 
-static void dump_b_type(const char *op, uint32_t rs1, uint32_t rs2,
-                        uint32_t pc) {
-  printf("%s %s,%s,0x%x\n", op, RegFile::get_name(rs1), RegFile::get_name(rs2),
-         pc);
+void dump_b_type(const char *op, uint32_t rs1, uint32_t rs2, uint32_t pc) {
+    printf("%s %s,%s,0x%x\n", op, RegFile::get_name(rs1),
+           RegFile::get_name(rs2), pc);
 }
 
-static void dump_mem_type(const char *op, uint32_t rd_rs2, uint32_t rs1,
-                          uint32_t imm) {
-  printf("%s %s,%d(%s)\n", op, RegFile::get_name(rd_rs2), imm,
-         RegFile::get_name(rs1));
+void dump_mem_type(const char *op, uint32_t rd_rs2, uint32_t rs1,
+                   uint32_t imm) {
+    printf("%s %s,%d(%s)\n", op, RegFile::get_name(rd_rs2), imm,
+           RegFile::get_name(rs1));
 }
+
+void load_segment(Mmu &mmu, std::ifstream &ifs, Elf32_Phdr ph) {
+    if (ph.p_offset % page_size)
+        fatal("%s: segment offset is not aligned to the page boundary",
+              __func__);
+
+    std::vector<uint8_t> buf(page_size);
+    ifs.seekg(ph.p_offset, std::ios::beg);
+    auto addr = ph.p_vaddr;
+    // Load the segment page by page onto the memory
+    for (long rem = ph.p_filesz; rem > 0; rem -= page_size) {
+        auto readsize = (rem < page_size) ? rem : page_size;
+        ifs.read(reinterpret_cast<char *>(buf.data()), readsize);
+        buf.resize(readsize);
+        mmu.write_page(addr, buf);
+        addr += page_size;
+    }
+
+    printf("Loaded segment from 0x%x into 0x%x (size 0x%x)\n", ph.p_offset,
+           ph.p_vaddr, ph.p_filesz);
+}
+
+bool validate_header(const Elf32_Ehdr &ehdr) {
+    if (!(ehdr.e_ident[EI_MAG0] == ELFMAG0 &&
+          ehdr.e_ident[EI_MAG1] == ELFMAG1 &&
+          ehdr.e_ident[EI_MAG2] == ELFMAG2 && ehdr.e_ident[EI_MAG3] == ELFMAG3))
+        return false;
+    if (ehdr.e_ident[4] != ELFCLASS32)
+        return false;
+    if (ehdr.e_ident[5] != ELFDATA2LSB)
+        return false;
+    return true;
+}
+} // namespace
 
 void Cpu::decode() {
   Instruction inst = instruction_buffer;
@@ -362,37 +394,6 @@ void Cpu::cycle() {
     printf("pc: 0x%x\n", program_counter);
     dump_regs(regs);
     n_cycle++;
-}
-
-static void load_segment(Mmu &mmu, std::ifstream &ifs, Elf32_Phdr ph) {
-  if (ph.p_offset % page_size)
-    fatal("%s: segment offset is not aligned to the page boundary", __func__);
-
-  std::vector<uint8_t> buf(page_size);
-  ifs.seekg(ph.p_offset, std::ios::beg);
-  auto addr = ph.p_vaddr;
-  // Load the segment page by page onto the memory
-  for (long rem = ph.p_filesz; rem > 0; rem -= page_size) {
-    auto readsize = (rem < page_size) ? rem : page_size;
-    ifs.read(reinterpret_cast<char *>(buf.data()), readsize);
-    buf.resize(readsize);
-    mmu.write_page(addr, buf);
-    addr += page_size;
-  }
-
-  printf("Loaded segment from 0x%x into 0x%x (size 0x%x)\n", ph.p_offset,
-         ph.p_vaddr, ph.p_filesz);
-}
-
-static bool validate_header(const Elf32_Ehdr &ehdr) {
-  if (!(ehdr.e_ident[EI_MAG0] == ELFMAG0 && ehdr.e_ident[EI_MAG1] == ELFMAG1 &&
-        ehdr.e_ident[EI_MAG2] == ELFMAG2 && ehdr.e_ident[EI_MAG3] == ELFMAG3))
-    return false;
-  if (ehdr.e_ident[4] != ELFCLASS32)
-    return false;
-  if (ehdr.e_ident[5] != ELFDATA2LSB)
-    return false;
-  return true;
 }
 
 void load_program(Cpu &cpu, const char *path) {
