@@ -36,68 +36,71 @@ struct Pte {
 /// Implement a proper hierarchicical or inverted page table in the future.
 class PageTable {
 public:
-  std::optional<Pte> lookup(Vpn vpn);
-  // Add a new PTE to the page table.
-  void add(Vpn vpn, Ppn ppn);
-  void print() const;
+    std::optional<Pte> lookup(Vpn vpn);
+    // Add a new PTE to the page table.
+    void add(Vpn vpn, Ppn ppn);
+    void print() const;
 
 private:
-  std::map<Vpn, Pte> map;
+    std::map<Vpn, Pte> map;
 };
 
-/// The physical memory.
+/// Memory implements the physical memory.
 class Memory {
 public:
-  Memory() = default;
+    Memory() = default;
 
-  uint64_t size() const { return size_; }
-  uint8_t *data() { return buf.data(); }
+    uint64_t size() const { return size_; }
+    uint8_t *data() { return buf.data(); }
 
-  // Read/write operations on the physical memory.  All addressses are physical.
-  uint32_t read32(MemAddr p_addr);
-  uint16_t read16(MemAddr p_addr);
-  uint8_t read8(MemAddr p_addr);
-  void write32(MemAddr p_addr, uint32_t value);
-  void write16(MemAddr p_addr, uint16_t value);
-  void write8(MemAddr p_addr, uint8_t value);
-  void write_page(MemAddr p_addr, const std::vector<uint8_t> &page);
+    // Read/write operations on the physical memory.  All addressses are
+    // physical.
+    uint32_t read32(MemAddr p_addr);
+    uint16_t read16(MemAddr p_addr);
+    uint8_t read8(MemAddr p_addr);
+    void write32(MemAddr p_addr, uint32_t value);
+    void write16(MemAddr p_addr, uint16_t value);
+    void write8(MemAddr p_addr, uint8_t value);
+    // Write a whole page onto the memory.  This is mainly a convenience
+    // function for the loading of a program.  @future: may be replaced by
+    // mmap().
+    void write_page(MemAddr p_addr, const std::vector<uint8_t> &page);
 
-  // Allocate a new physical frame.  This allocates more memory to the
-  // simulator.
-  // Returns the page frame number of the newly allocated frame.
-  Ppn new_frame();
+    // Allocate a new physical frame.  This allocates more memory to the
+    // simulator.
+    // Returns the page frame number of the newly allocated frame.
+    Ppn new_frame();
 
 private:
-  uint64_t size_{};
-  std::vector<uint8_t> buf{};
-  std::unordered_set<uint32_t /* page frame number */> used_page_frames{};
+    uint64_t size_{};
+    std::vector<uint8_t> buf{};
+    std::unordered_set<uint32_t /* page frame number */> used_page_frames{};
 };
 
 /// Memory management unit (MMU).
 class Mmu {
 public:
-  Mmu(Memory &mem_) : mem(mem_) {}
+    Mmu(Memory &mem_) : mem(mem_) {}
 
-  // All read/write operations pass through MMU.  All addresses are virtual.
-  uint32_t read32(MemAddr addr);
-  uint16_t read16(MemAddr addr);
-  uint8_t read8(MemAddr addr);
-  void write32(MemAddr addr, uint32_t value);
-  void write16(MemAddr addr, uint16_t value);
-  void write8(MemAddr addr, uint8_t value);
+    // All read/write operations pass through MMU.  All addresses are virtual.
+    uint32_t read32(MemAddr addr);
+    uint16_t read16(MemAddr addr);
+    uint8_t read8(MemAddr addr);
+    void write32(MemAddr addr, uint32_t value);
+    void write16(MemAddr addr, uint16_t value);
+    void write8(MemAddr addr, uint8_t value);
+    // Write a whole page onto the memory.  This is mainly a convenience
+    // function for the loading of a program.  @future: may be replaced by
+    // mmap().
+    void write_page(Vpn vpn, const std::vector<uint8_t> &page);
 
-  // Write a whole page onto the memory.  This is mainly a convenience function
-  // for the loading of a program.  @future: may be replaced by mmap().
-  void write_page(Vpn vpn, const std::vector<uint8_t> &page);
+    // Virtual to physical address translation.
+    MemAddr translate(MemAddr v_addr);
 
-  // Virtual to physical address translation.
-  MemAddr translate(MemAddr v_addr);
-
-  const PageTable &get_page_table() const { return page_table; }
+    PageTable page_table;
 
 private:
-  Memory &mem; // physical DRAM managed by this MMU.
-  PageTable page_table;
+    Memory &mem; // physical DRAM managed by this MMU.
 };
 
 #endif

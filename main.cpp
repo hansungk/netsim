@@ -362,7 +362,7 @@ void Cpu::decode() {
         printf("return code was %d\n", regs[a0]);
         exit(0); // FIXME
       } else {
-        mmu.get_page_table().print();
+        mmu.page_table.print();
         fatal("decode: unimplemented ECALL: %d", regs[a7]);
       }
       break;
