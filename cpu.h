@@ -11,7 +11,7 @@
 // Currently only supports the base RISC-V ISA that has fixed-length 32-bit
 // instructions.  TODO: implement RISC-V ISA v2.2 1.2 Instruction Length
 // Encoding
-typedef uint32_t Instruction;
+using Instruction = uint32_t;
 
 static const char *register_names[]{
     "0",  "ra", "sp", "gp", "tp",  "t0",  "t1", "t2", "fp", "s1", "a0",
@@ -62,31 +62,34 @@ void dump_regs(const RegFile &reg);
 
 class Cpu {
 public:
-  Cpu(Memory &mem) : mmu(mem), regs() {}
+    Cpu(Memory &mem) : mmu(mem), regs() {}
 
-  // Load an ELF program at `path` into memory and initialize architectural
-  // states for execution.
-  void load_program(const char *path);
-  void cycle();
+    // Load an ELF program at `path` into memory and initialize architectural
+    // states for execution.
+    void load_program(const char *path);
+    void cycle();
 
-  long n_cycle = 0;
+    long n_cycle = 0;
 
-  void set_npc(MemAddr npc) { next_program_counter = npc; }
+    void set_npc(MemAddr npc) { next_program_counter = npc; }
 
-// private:
-  void fetch();
-  void decode();
-  void read_elf_header(std::ifstream &ifs);
+    // private:
+    // TODO: Discrete event simulation
+    void run();
 
-  Mmu &get_mmu() { return mmu; }
+    void fetch();
+    void decode();
+    void read_elf_header(std::ifstream &ifs);
 
-  // Fetch-Decode instruction buffer.
-  Instruction instruction_buffer;
+    Mmu &get_mmu() { return mmu; }
 
-  Mmu mmu;
-  RegFile regs;
-  MemAddr program_counter = 0;
-  MemAddr next_program_counter = 0;
+    // Fetch-Decode instruction buffer.
+    Instruction instruction_buffer;
+
+    Mmu mmu;
+    RegFile regs;
+    MemAddr program_counter = 0;
+    MemAddr next_program_counter = 0;
 };
 
 /* TODO */

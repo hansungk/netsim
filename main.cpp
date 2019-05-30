@@ -1,9 +1,11 @@
-#include "cpu.h"
+#include "sim.h"
 #include "decode.h"
-#include <vector>
-#include <cstdio>
+#include "event.h"
 #include <cstdarg>
+#include <cstdio>
 #include <elf.h>
+#include <iostream>
+#include <vector>
 
 void fatal(const char *fmt, ...) {
   va_list ap;
@@ -17,13 +19,8 @@ void fatal(const char *fmt, ...) {
   exit(EXIT_FAILURE);
 }
 
-void Cpu::fetch() {
-  program_counter = next_program_counter;
-  // TODO: Big endian.
-  instruction_buffer = mmu.read32(program_counter);
-}
-
 namespace {
+
 void dump_i_type(const char *op, uint32_t rd, uint32_t rs1, uint32_t imm) {
     printf("%s %s,%s,%d\n", op, RegFile::get_name(rd), RegFile::get_name(rs1),
            imm);
@@ -81,7 +78,58 @@ bool validate_header(const Elf32_Ehdr &ehdr) {
         return false;
     return true;
 }
+
+void load_program(Cpu &cpu, const char *path) {
+  std::ifstream ifs(path, std::ios::in | std::ios::binary);
+  if (!ifs)
+    fatal("failed to open file");
+
+  // Validate the ELF file.
+  Elf32_Ehdr elf_header;
+  ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
+  if (!validate_header(elf_header))
+    fatal("not a valid ELF32 file");
+
+  printf("ELF: %d program headers\n", elf_header.e_phnum);
+  printf("Program entry point: 0x%x\n", elf_header.e_entry);
+  cpu.set_npc(elf_header.e_entry);
+
+  // Read all the ELF program headers.
+  std::vector<Elf32_Phdr> program_headers;
+  for (int i = 0; i < elf_header.e_phnum; i++) {
+    Elf32_Phdr ph;
+    ifs.read(reinterpret_cast<char *>(&ph), sizeof(ph));
+    program_headers.push_back(ph);
+  }
+
+  // For PT_LOAD headers, load the segments as specified.
+  for (const auto ph : program_headers) {
+    if (ph.p_type != PT_LOAD)
+      continue;
+    load_segment(cpu.get_mmu(), ifs, ph);
+  }
+
+  // Set the stack pointer.
+  // cpu.regs[sp] = ~static_cast<uint32_t>(0);
+  cpu.regs[sp] = 0xffffdd60; // FIXME: arbitrary value, taken from qemu-riscv32
+}
+
 } // namespace
+
+void dump_regs(const RegFile &regs) {
+    for (int i = 0; i < 32; i++) {
+        printf("%3s: %#10x %9d ", RegFile::get_name(i), regs[i], regs[i]);
+        if ((i + 1) % 4 == 0)
+            printf("\n");
+    }
+    printf("\n");
+}
+
+void Cpu::fetch() {
+  program_counter = next_program_counter;
+  // TODO: Big endian.
+  instruction_buffer = mmu.read32(program_counter);
+}
 
 void Cpu::decode() {
   Instruction inst = instruction_buffer;
@@ -375,15 +423,11 @@ void Cpu::decode() {
   }
 }
 
-void dump_regs(const RegFile &regs) {
-    for (int i = 0; i < 32; i++) {
-        printf("%3s: %#10x %9d ", RegFile::get_name(i), regs[i], regs[i]);
-        if ((i + 1) % 4 == 0)
-            printf("\n");
-    }
-    printf("\n");
+namespace {
+void func() {
+    std::cout << "hi\n";
 }
-
+}
 void Cpu::cycle() {
     // Right now, decode decodes *and* also executes instructions.  This has to
     // be branched out as a separate function in the future.  Also, currently
@@ -396,56 +440,34 @@ void Cpu::cycle() {
     n_cycle++;
 }
 
-void load_program(Cpu &cpu, const char *path) {
-  std::ifstream ifs(path, std::ios::in | std::ios::binary);
-  if (!ifs)
-    fatal("failed to open file");
+void Sim::run() {
+    Event e{10, func};
+    event_queue.schedule(e);
 
-  // Validate the ELF file.
-  Elf32_Ehdr elf_header;
-  ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
-  if (!validate_header(elf_header))
-    fatal("not a valid ELF32 file");
-
-  printf("ELF: %d program headers\n", elf_header.e_phnum);
-  printf("Program entry point: 0x%x\n", elf_header.e_entry);
-  cpu.set_npc(elf_header.e_entry);
-
-  // Read all the ELF program headers.
-  std::vector<Elf32_Phdr> program_headers;
-  for (int i = 0; i < elf_header.e_phnum; i++) {
-    Elf32_Phdr ph;
-    ifs.read(reinterpret_cast<char *>(&ph), sizeof(ph));
-    program_headers.push_back(ph);
-  }
-
-  // For PT_LOAD headers, load the segments as specified.
-  for (const auto ph : program_headers) {
-    if (ph.p_type != PT_LOAD)
-      continue;
-    load_segment(cpu.get_mmu(), ifs, ph);
-  }
-
-  // Set the stack pointer.
-  // cpu.regs[sp] = ~static_cast<uint32_t>(0);
-  cpu.regs[sp] = 0xffffdd60; // FIXME: arbitrary value, taken from qemu-riscv32
+    while (!event_queue.empty()) {
+        auto event = event_queue.pop();
+        std::cout << "event at " << event.time << ":\n";
+        event.func();
+    }
 }
 
 int main(int argc, char **argv) {
-  if (argc < 2) {
-    fprintf(stderr, "Usage: %s EXEC-FILE\n", argv[0]);
-    exit(EXIT_FAILURE);
-  }
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s EXEC-FILE\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
 
-  Memory mem;
-  Cpu cpu(mem);
+    Memory mem;
+    Cpu cpu(mem);
+    Sim sim{cpu, mem};
 
-  load_program(cpu, argv[1]);
+    sim.run();
 
-  while (true) {
-    cpu.cycle();
-  }
+    // load_program(cpu, argv[1]);
 
-  printf("Simulated %ld cycles\n", cpu.n_cycle);
-  return 0;
+    // while (true) {
+    //     cpu.cycle();
+    // }
+
+    return 0;
 }

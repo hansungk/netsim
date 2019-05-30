@@ -28,7 +28,7 @@ endif ()
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Creates executable target.
-add_executable (cpu main.cpp decode.cpp memory.cpp)
+add_executable (cpu main.cpp decode.cpp memory.cpp event.cpp)
 
 if (APPLE)
   # Should be below the add_executable () line to avoid complaining about

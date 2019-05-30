@@ -1,3 +1,6 @@
+-*- org -*-
+
+* TODO
 - Simple virtual memory system (std::map?)
   VM system is actually more important that the execution engine, because
   address translation becomes critical if we don't want to emulate the entire
@@ -21,3 +24,7 @@
   - More complicated code
 - FIFO queues?
   - Overkill?
+
+* Discrete Event-driven Simulation
+
+Reference: https://en.wikipedia.org/wiki/Discrete-event_simulation
