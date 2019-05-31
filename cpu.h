@@ -72,14 +72,14 @@ public:
 
     long n_cycle = 0;
 
-    void set_npc(MemAddr npc) { next_program_counter = npc; }
+    void set_npc(MemAddr pc) { pc_next = pc; }
 
     // private:
     // TODO: Discrete event simulation
     void run();
 
     void fetch();
-    void decode();
+    void decode_and_execute();
     void read_elf_header(std::ifstream &ifs);
 
     Mmu &get_mmu() { return mmu; }
@@ -89,8 +89,8 @@ public:
 
     Mmu mmu;
     RegFile regs;
-    MemAddr program_counter = 0;
-    MemAddr next_program_counter = 0;
+    MemAddr pc{0};
+    MemAddr pc_next{0};
 
 private:
     EventQueue &eventq;
@@ -103,7 +103,5 @@ struct FetchBuffer {
   struct FetchBufferEntry {
   } * entry;
 };
-
-void fatal(const char *fmt, ...);
 
 #endif

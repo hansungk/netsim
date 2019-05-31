@@ -43,6 +43,10 @@ private:
 template <typename T> class Req {
 public:
     Req(std::function<void()> h) : hook(h) {}
+
+    // Write the result value, and call the event hook function.  This hook will
+    // effectively 'notify' the master module by initiating the finalizing
+    // operations on the master-side, e.g. setting a ready bit.
     void reply(const T &val_) {
         val = std::move(val_);
         hook();

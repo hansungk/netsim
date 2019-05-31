@@ -42,8 +42,7 @@ Ppn Memory::new_frame() {
 
 uint32_t Memory::read32(Req<uint32_t> &req, MemAddr p_addr) {
     uint32_t val = *reinterpret_cast<const uint32_t *>(&buf[p_addr]);
-    Event e{6, [&req, val]() { req.reply(val); }};
-    eventq.schedule(e);
+    eventq.schedule(Event{6, [&req, val]() { req.reply(val); }});
     return val;
 }
 

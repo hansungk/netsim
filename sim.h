@@ -6,6 +6,8 @@
 #include "memory.h"
 #include "event.h"
 
+void fatal(const char *fmt, ...);
+
 class Sim {
 public:
     Sim() : mem(eventq), cpu(eventq, mem) {}
