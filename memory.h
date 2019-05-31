@@ -2,13 +2,14 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include "event.h"
 #include <array>
 #include <cstdint>
 #include <fstream>
-#include <vector>
 #include <map>
-#include <unordered_set>
 #include <optional>
+#include <unordered_set>
+#include <vector>
 
 using MemAddr = uint32_t;
 using Page = std::array<uint8_t, 4096>;
@@ -48,14 +49,14 @@ private:
 /// Memory implements the physical memory.
 class Memory {
 public:
-    Memory() = default;
+    Memory(EventQueue &eq) : eventq(eq) {}
 
     uint64_t size() const { return size_; }
     uint8_t *data() { return buf.data(); }
 
     // Read/write operations on the physical memory.  All addressses are
     // physical.
-    uint32_t read32(MemAddr p_addr);
+    uint32_t read32(Req<uint32_t> &req, MemAddr p_addr);
     uint16_t read16(MemAddr p_addr);
     uint8_t read8(MemAddr p_addr);
     void write32(MemAddr p_addr, uint32_t value);
@@ -72,6 +73,7 @@ public:
     Ppn new_frame();
 
 private:
+    EventQueue &eventq;
     uint64_t size_{};
     std::vector<uint8_t> buf{};
     std::unordered_set<uint32_t /* page frame number */> used_page_frames{};

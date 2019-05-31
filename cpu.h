@@ -2,6 +2,7 @@
 #ifndef CPU_H
 #define CPU_H
 
+#include "event.h"
 #include "memory.h"
 #include <cassert>
 #include <cstdlib>
@@ -62,7 +63,7 @@ void dump_regs(const RegFile &reg);
 
 class Cpu {
 public:
-    Cpu(Memory &mem) : mmu(mem), regs() {}
+    Cpu(EventQueue &eq, Memory &mem) : mmu(mem), regs(), eventq(eq) {}
 
     // Load an ELF program at `path` into memory and initialize architectural
     // states for execution.
@@ -90,6 +91,9 @@ public:
     RegFile regs;
     MemAddr program_counter = 0;
     MemAddr next_program_counter = 0;
+
+private:
+    EventQueue &eventq;
 };
 
 /* TODO */

@@ -8,14 +8,16 @@
 
 class Sim {
 public:
-    Sim(const Cpu &cpu_, const Memory &mem_) : cpu(cpu_), mem(mem_) {}
+    Sim() : mem(eventq), cpu(eventq, mem) {}
 
     // Run the simulator.
     void run();
 
-    Cpu cpu;
+    void handler();
+
+    EventQueue eventq; // main event queue
     Memory mem;
-    EventQueue event_queue; // main event queue
+    Cpu cpu;
 };
 
 #endif

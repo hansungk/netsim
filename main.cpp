@@ -423,11 +423,6 @@ void Cpu::decode() {
   }
 }
 
-namespace {
-void func() {
-    std::cout << "hi\n";
-}
-}
 void Cpu::cycle() {
     // Right now, decode decodes *and* also executes instructions.  This has to
     // be branched out as a separate function in the future.  Also, currently
@@ -440,15 +435,24 @@ void Cpu::cycle() {
     n_cycle++;
 }
 
-void Sim::run() {
-    Event e{10, func};
-    event_queue.schedule(e);
+void Sim::handler() { std::cout << "memory finished!\n"; }
 
-    while (!event_queue.empty()) {
-        auto event = event_queue.pop();
-        std::cout << "event at " << event.time << ":\n";
+void Sim::run() {
+    Req<uint32_t> req{[this]() { handler(); }};
+
+    Event e{0, [this, &req]() {
+                std::cout << "Requesting read operation\n";
+                mem.read32(req, 0x0);
+            }};
+    eventq.schedule(e);
+
+    while (!eventq.empty()) {
+        auto event = eventq.pop();
+        std::cout << "[event @ t=" << event.time << ":]\n";
         event.func();
     }
+
+    std::cout << "val = " << req.val << std::endl;
 }
 
 int main(int argc, char **argv) {
@@ -457,13 +461,13 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    Memory mem;
-    Cpu cpu(mem);
-    Sim sim{cpu, mem};
+    Sim sim;
+    // Memory mem{sim};
+    // Cpu cpu{sim, mem};
+
+    load_program(sim.cpu, argv[1]);
 
     sim.run();
-
-    // load_program(cpu, argv[1]);
 
     // while (true) {
     //     cpu.cycle();
