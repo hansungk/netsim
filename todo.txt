@@ -28,3 +28,58 @@
 * Discrete Event-driven Simulation
 
 Reference: https://en.wikipedia.org/wiki/Discrete-event_simulation
+
+Let's make a scenario.  I want to request a read operation to the
+Memory, and when the operation completes, I want the master to detect
+it and print a "completed!" message.  To do this, the memory module
+would first have to schedule an event where it notifies the master
+when it completes the operation.  But how exactly will the master be
+notified?  Either the master can watch a 'ready bit' at the start of
+every event handling, or the memory can directly call a function in
+the master's module to initiate the master to do its work.
+
+One problem of the first method is that *every* modules that are
+waiting for an unfinished request should do the 'ready bit' poll for
+*every* single events.
+
+The second method mitigates this problem by making the slave itself
+call a single appropriate function for every completion.  However, it
+is unclear if this mechanism is general enough.
+
+For instance, let's say we're simulating the ROB.  The oldest ROB
+entry can only be committed when its value is calculated and its ready
+bit checked.  When an ROB entry containing a memory load operation
+issues, it would request an operation to the L1 cache.  When the cache
+finishes, following the second method, it will call a specific
+function in the CPU core module to continue the core simulation.  This
+function cannot simply be the function that commits the ROB entry,
+however; we can never be sure whether this entry will reach the ROB
+head by the time the cache operation is finished.
+
+The committing logic has no direct relationship with 'which' entry
+requested what operation at any time; it only concerns with what entry
+'happens to be' at the ROB head at a given time.  Therefore, it works
+much better with the first polling method that checks the ready bit of
+the last ROB entry for every event cycle.
+
+Then, the best that the cache can do is to call the function that sets
+just the ready bit of the ROB entry, and does no more.  Of course,
+this is better done with the second method -- we don't want *all* the
+unfinished ROB entries to expect the arrival of their response for
+every turnaround from the cache.
+
+(We can still twist things a bit more so that the second method works
+for all possible situations.  For the above case, in the CPU core
+function that is linked to the cache, we can check whether the entry
+just became the head of the ROB and if then call the committing
+function.  However, this implementation generates too much unnecessary
+complexity by conflating the commit logic together with *all* of the
+issuing logic; i.e. now, all operations such as cache access, ALU
+operation and branch prediction update should include a check for the
+commit condition upon their completion.)
+
+The example above suggests that it is best to mix-and-match the two
+methods.  When it is clear what the 'finalizing' operation must be
+after an event, use the second method; if the problem at hand doesn't
+care about the owner of the event but rather the overall incidental
+state at a specific time point, use the polling method.
