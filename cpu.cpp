@@ -1,6 +1,7 @@
 #include "cpu.h"
 #include "decode.h"
 #include "sim.h"
+#include <iostream>
 
 namespace {
 void dump_i_type(const char *op, uint32_t rd, uint32_t rs1, uint32_t imm) {
@@ -39,8 +40,9 @@ void dump_regs(const RegFile &regs) {
 }
 
 void Cpu::fetch() {
-  pc = pc_next;
-  instruction_buffer = mmu.read32(pc);
+    Req<uint32_t> req{instruction_buffer, [this] { decode_and_execute(); }};
+    pc = pc_next;
+    mmu.read32(req, pc);
 }
 
 void Cpu::decode_and_execute() {
@@ -275,10 +277,12 @@ void Cpu::decode_and_execute() {
             regs[di.rd] = static_cast<uint32_t>(mmu.read16(addr));
             dump_mem_type("lhu", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
-        case F_LW:
-            regs[di.rd] = mmu.read32(addr);
+        case F_LW: {
+            Req<uint32_t> req{regs[di.rd], []() {}};
+            mmu.read32(req, addr);
             dump_mem_type("lw", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
+        }
         default:
             fatal("decode: unrecognized funct for LOAD");
             break;
@@ -336,6 +340,9 @@ void Cpu::decode_and_execute() {
         fatal("decode: unrecognized opcode %x", opcode);
         break;
     }
+
+    eventq.reschedule(0, {[this] { dump_regs(regs); }});
+    eventq.reschedule(1, {[this] { fetch(); }});
 }
 
 void Cpu::cycle() {

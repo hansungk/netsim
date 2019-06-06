@@ -40,9 +40,10 @@ Ppn Memory::new_frame() {
 // these in the future to be endian-agnostic.
 // TODO: profile to see if inline is worthy.
 
-uint32_t Memory::read32(Req<uint32_t> &req, MemAddr p_addr) {
+uint32_t Memory::read32(Req<uint32_t> req, MemAddr p_addr) {
     uint32_t val = *reinterpret_cast<const uint32_t *>(&buf[p_addr]);
-    eventq.schedule(Event{6, [&req, val]() { req.reply(val); }});
+    Event e{[req, val]() mutable { req.reply(val); }};
+    eventq.reschedule(6, e);
     return val;
 }
 
@@ -98,9 +99,9 @@ MemAddr Mmu::translate(MemAddr v_addr) {
     }
 }
 
-uint32_t Mmu::read32(MemAddr addr) {
+uint32_t Mmu::read32(Req<uint32_t> req, MemAddr addr) {
     auto p_addr = translate(addr);
-    // return mem.read32(&v, p_addr);
+    mem.read32(req, p_addr);
     return 0;
 }
 uint16_t Mmu::read16(MemAddr addr) {

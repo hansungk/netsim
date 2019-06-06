@@ -91,21 +91,17 @@ void load_program(Cpu &cpu, const char *path) {
 void Sim::handler() { std::cout << "memory finished!\n"; }
 
 void Sim::run() {
-    Req<uint32_t> req{[this]() { handler(); }};
-
-    Event e{0, [this, &req]() {
-                std::cout << "Requesting read operation\n";
-                mem.read32(req, 0x0);
-            }};
-    eventq.schedule(e);
+    // uint32_t val;
+    // Req<uint32_t> req{val, [this]() { handler(); }};
+    eventq.schedule(0, {[this] { cpu.fetch(); }});
 
     while (!eventq.empty()) {
-        auto event = eventq.pop();
-        std::cout << "[event @ t=" << event.time << ":]\n";
-        event.func();
+        auto e = eventq.pop();
+        std::cout << "[event @ t=" << eventq.time() << ":]\n";
+        e.func();
     }
 
-    std::cout << "val = " << req.val << std::endl;
+    // std::cout << "val = " << val << std::endl;
 }
 
 int main(int argc, char **argv) {
