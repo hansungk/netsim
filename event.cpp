@@ -18,6 +18,7 @@ const Event &EventQueue::peek() const {
 }
 
 Event EventQueue::pop() {
+    assert(queue.front().time >= time_ && "time goes backward!");
     // Update simulation time.
     time_ = queue.front().time;
     Event e{peek()};
