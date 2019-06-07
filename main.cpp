@@ -52,6 +52,8 @@ bool validate_header(const Elf32_Ehdr &ehdr) {
     return true;
 }
 
+// Load an ELF program at `path` into memory and initialize architectural
+// states for execution.
 void load_program(Cpu &cpu, const char *path) {
   std::ifstream ifs(path, std::ios::in | std::ios::binary);
   if (!ifs)

@@ -2,25 +2,25 @@
 #include <cassert>
 
 void EventQueue::schedule(long time, const Event &e) {
-    TimedEvent te{time, e};
-    queue.push(te);
-    std::cout << "scheduled event at " << te.time << std::endl;
+    TimeEventPair p{time, e};
+    queue.push(p);
+    std::cout << "scheduled event at " << p.first << std::endl;
 }
 
 void EventQueue::reschedule(long time, const Event &e) {
-    TimedEvent te{time_ + time, e};
-    queue.push(te);
-    std::cout << "scheduled event at " << te.time << std::endl;
+    TimeEventPair p{time_ + time, e};
+    queue.push(p);
+    std::cout << "scheduled event at " << p.first << std::endl;
 }
 
 const Event &EventQueue::peek() const {
-    return queue.front().event;
+    return queue.top().second;
 }
 
 Event EventQueue::pop() {
-    assert(queue.front().time >= time_ && "time goes backward!");
+    assert(queue.top().first >= time_ && "time goes backward!");
     // Update simulation time.
-    time_ = queue.front().time;
+    time_ = queue.top().first;
     Event e{peek()};
     queue.pop();
     return e;

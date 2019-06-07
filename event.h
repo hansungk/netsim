@@ -33,13 +33,16 @@ public:
     // simulator cannot autonomously add those events to the queue every time a
     // new event is generated.
 private:
-    struct TimedEvent {
-        long time;
-        Event event;
+    using TimeEventPair = std::pair<long, Event>;
+    static constexpr auto cmp = [](const auto &p1, const auto &p2) {
+        return p1.first > p2.first;
     };
 
+private:
     long time_{0};
-    std::queue<TimedEvent> queue;
+    std::priority_queue<TimeEventPair, std::vector<TimeEventPair>,
+                        decltype(cmp)>
+        queue{cmp};
 };
 
 // A data structure that must be sent to the worker module when a master module

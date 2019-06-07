@@ -65,9 +65,6 @@ class Cpu {
 public:
     Cpu(EventQueue &eq, Memory &mem) : mmu(mem), regs(), eventq(eq) {}
 
-    // Load an ELF program at `path` into memory and initialize architectural
-    // states for execution.
-    void load_program(const char *path);
     void cycle();
 
     long n_cycle = 0;
