@@ -7,15 +7,15 @@
 #include <vector>
 
 void fatal(const char *fmt, ...) {
-  va_list ap;
+    va_list ap;
 
-  fprintf(stderr, "fatal: ");
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  va_end(ap);
-  fprintf(stderr, "\n");
+    fprintf(stderr, "fatal: ");
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fprintf(stderr, "\n");
 
-  exit(EXIT_FAILURE);
+    exit(EXIT_FAILURE);
 }
 
 namespace {
@@ -55,38 +55,39 @@ bool validate_header(const Elf32_Ehdr &ehdr) {
 // Load an ELF program at `path` into memory and initialize architectural
 // states for execution.
 void load_program(Cpu &cpu, const char *path) {
-  std::ifstream ifs(path, std::ios::in | std::ios::binary);
-  if (!ifs)
-    fatal("failed to open file");
+    std::ifstream ifs(path, std::ios::in | std::ios::binary);
+    if (!ifs)
+        fatal("failed to open file");
 
-  // Validate the ELF file.
-  Elf32_Ehdr elf_header;
-  ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
-  if (!validate_header(elf_header))
-    fatal("not a valid ELF32 file");
+    // Validate the ELF file.
+    Elf32_Ehdr elf_header;
+    ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
+    if (!validate_header(elf_header))
+        fatal("not a valid ELF32 file");
 
-  printf("ELF: %d program headers\n", elf_header.e_phnum);
-  printf("Program entry point: 0x%x\n", elf_header.e_entry);
-  cpu.set_npc(elf_header.e_entry);
+    printf("ELF: %d program headers\n", elf_header.e_phnum);
+    printf("Program entry point: 0x%x\n", elf_header.e_entry);
+    cpu.set_npc(elf_header.e_entry);
 
-  // Read all the ELF program headers.
-  std::vector<Elf32_Phdr> program_headers;
-  for (int i = 0; i < elf_header.e_phnum; i++) {
-    Elf32_Phdr ph;
-    ifs.read(reinterpret_cast<char *>(&ph), sizeof(ph));
-    program_headers.push_back(ph);
-  }
+    // Read all the ELF program headers.
+    std::vector<Elf32_Phdr> program_headers;
+    for (int i = 0; i < elf_header.e_phnum; i++) {
+        Elf32_Phdr ph;
+        ifs.read(reinterpret_cast<char *>(&ph), sizeof(ph));
+        program_headers.push_back(ph);
+    }
 
-  // For PT_LOAD headers, load the segments as specified.
-  for (const auto ph : program_headers) {
-      if (ph.p_type != PT_LOAD)
-          continue;
-      load_segment(cpu.get_mmu(), ifs, ph);
-  }
+    // For PT_LOAD headers, load the segments as specified.
+    for (const auto ph : program_headers) {
+        if (ph.p_type != PT_LOAD)
+            continue;
+        load_segment(cpu.get_mmu(), ifs, ph);
+    }
 
-  // Set the stack pointer.
-  // cpu.regs[sp] = ~static_cast<uint32_t>(0);
-  cpu.regs[sp] = 0xffffdd60; // FIXME: arbitrary value, taken from qemu-riscv32
+    // Set the stack pointer.
+    // cpu.regs[sp] = ~static_cast<uint32_t>(0);
+    cpu.regs[sp] =
+        0xffffdd60; // FIXME: arbitrary value, taken from qemu-riscv32
 }
 } // namespace
 

@@ -1,4 +1,3 @@
-// -*- C++ -*-
 #ifndef SIM_H
 #define SIM_H
 
@@ -10,7 +9,7 @@ void fatal(const char *fmt, ...);
 
 class Sim {
 public:
-    Sim() : mem(eventq), cpu(eventq, mem) {}
+    Sim() : eventq{}, mem{eventq}, cpu{eventq, mem} {}
 
     // Run the simulator.
     void run();

@@ -1,16 +1,17 @@
 #include "event.h"
 #include <cassert>
+#include <iostream>
 
 void EventQueue::schedule(long time, const Event &e) {
     TimeEventPair p{time, e};
     queue.push(p);
-    std::cout << "scheduled event at " << p.first << std::endl;
+    // std::cout << "scheduled event at " << p.first << std::endl;
 }
 
 void EventQueue::reschedule(long time, const Event &e) {
     TimeEventPair p{time_ + time, e};
     queue.push(p);
-    std::cout << "scheduled event at " << p.first << std::endl;
+    // std::cout << "scheduled event at " << p.first << std::endl;
 }
 
 const Event &EventQueue::peek() const {
