@@ -62,7 +62,7 @@ void dump_regs(const RegFile &reg);
 
 class Cpu {
 public:
-    Cpu(EventQueue &eq, Memory &mem) : mmu(mem), regs(), eventq(eq) {}
+    Cpu(EventQueue &eq, Memory &mem) : eventq{eq}, mmu{mem}, inst_reg{eq} {}
 
     void cycle();
 
@@ -80,16 +80,12 @@ public:
 
     Mmu &get_mmu() { return mmu; }
 
-    // Fetch-Decode instruction buffer.
-    Instruction instruction_buffer;
-
+    EventQueue &eventq;
     Mmu mmu;
+    Reg<Instruction> inst_reg;
     RegFile regs;
     MemAddr pc{0};
     MemAddr pc_next{0};
-
-private:
-    EventQueue &eventq;
 };
 
 /* TODO */

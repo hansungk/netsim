@@ -8,8 +8,8 @@ void EventQueue::schedule(long time, const Event &e) {
     // std::cout << "scheduled event at " << p.first << std::endl;
 }
 
-void EventQueue::reschedule(long time, const Event &e) {
-    TimeEventPair p{time_ + time, e};
+void EventQueue::reschedule(long reltime, const Event &e) {
+    TimeEventPair p{time_ + reltime, e};
     queue.push(p);
     // std::cout << "scheduled event at " << p.first << std::endl;
 }

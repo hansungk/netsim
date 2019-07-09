@@ -19,7 +19,7 @@ public:
     EventQueue(const EventQueue &) = delete;
 
     void schedule(long time, const Event &e);
-    void reschedule(long time, const Event &e);
+    void reschedule(long reltime, const Event &e);
 
     bool empty() const { return queue.empty(); }
     const Event &peek() const;
@@ -42,6 +42,35 @@ private:
     std::priority_queue<TimeEventPair, std::vector<TimeEventPair>,
                         decltype(cmp)>
         queue{cmp};
+};
+
+template <typename T> class Reg {
+public:
+    Reg(EventQueue &eq) : eventq{eq} {}
+
+    // Get the value stored in this Reg.
+    // T is likely to be an integer, so just return by value.
+    T get() const {
+        return val;
+    }
+
+    // Set the value stored in this Reg.
+    // Triggers an event for each of all callbacks linked with this Reg.
+    void set(T v) {
+        val = v;
+        for (const auto &cb : callbacks) {
+            eventq.reschedule(1, Event{cb});
+        }
+    }
+
+    void watch(std::function<void()> f) {
+        callbacks.push_back(f);
+    }
+
+private:
+    EventQueue &eventq;
+    std::vector<std::function<void()>> callbacks{};
+    T val{};
 };
 
 // A data structure that must be sent to the worker module when a master module

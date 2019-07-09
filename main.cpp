@@ -94,8 +94,7 @@ void load_program(Cpu &cpu, const char *path) {
 void Sim::handler() { std::cout << "memory finished!\n"; }
 
 void Sim::run() {
-    // uint32_t val;
-    // Req<uint32_t> req{val, [this]() { handler(); }};
+    cpu.inst_reg.watch([this] { cpu.decode_and_execute(); });
     eventq.schedule(0, {[this] { cpu.fetch(); }});
 
     while (!eventq.empty()) {

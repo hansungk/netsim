@@ -55,7 +55,7 @@ public:
 
     // Read/write operations on the physical memory.  All addressses are
     // physical.
-    uint32_t read32(Req<uint32_t> req, MemAddr p_addr);
+    uint32_t read32(Reg<uint32_t> &reg, MemAddr p_addr);
     uint16_t read16(MemAddr p_addr);
     uint8_t read8(MemAddr p_addr);
     void write32(MemAddr p_addr, uint32_t value);
@@ -84,7 +84,7 @@ public:
     Mmu(Memory &mem_) : mem(mem_) {}
 
     // All read/write operations pass through MMU.  All addresses are virtual.
-    uint32_t read32(Req<uint32_t> req, MemAddr addr);
+    uint32_t read32(Reg<uint32_t> &reg, MemAddr addr);
     uint16_t read16(MemAddr addr);
     uint8_t read8(MemAddr addr);
     void write32(MemAddr addr, uint32_t value);

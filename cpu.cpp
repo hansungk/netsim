@@ -40,13 +40,12 @@ void dump_regs(const RegFile &regs) {
 }
 
 void Cpu::fetch() {
-    Req<uint32_t> req{instruction_buffer, [this] { decode_and_execute(); }};
     pc = pc_next;
-    mmu.read32(req, pc);
+    mmu.read32(inst_reg, pc);
 }
 
 void Cpu::decode_and_execute() {
-    Instruction inst = instruction_buffer;
+    Instruction inst = inst_reg.get();
     MemAddr target_pc = ~0;
     uint8_t opcode = take_bits(inst, 0, 7);
     DecodeInfo di;
@@ -278,8 +277,10 @@ void Cpu::decode_and_execute() {
             dump_mem_type("lhu", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         case F_LW: {
-            Req<uint32_t> req{regs[di.rd], []() {}};
-            mmu.read32(req, addr);
+            // FIXME
+            std::cout << "LOAD!\n";
+            Reg<uint32_t> reg{eventq};
+            mmu.read32(reg, addr);
             dump_mem_type("lw", di.rd, di.rs1, sign_extend(di.imm, 12));
             break;
         }
