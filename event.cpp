@@ -9,9 +9,7 @@ void EventQueue::schedule(long time, const Event &e) {
 }
 
 void EventQueue::reschedule(long reltime, const Event &e) {
-    TimeEventPair p{time_ + reltime, e};
-    queue.push(p);
-    // std::cout << "scheduled event at " << p.first << std::endl;
+    schedule(time_ + reltime, e);
 }
 
 const Event &EventQueue::peek() const {
