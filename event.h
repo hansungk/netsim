@@ -5,7 +5,7 @@
 #include <queue>
 
 // An Event has a callback function.
-// This type is meant to be used by value.
+// This is a by-value type.
 class Event {
 public:
     Event(std::function<void()> f) : func(f) {}
