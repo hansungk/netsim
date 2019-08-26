@@ -1,20 +1,16 @@
 #include "router.h"
 #include <iostream>
 
-int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s EXEC-FILE\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
-
-    Router router;
-    router.put(Flit{0});
-    router.put(Flit{1});
-    router.put(Flit{2});
+int main(void) {
+    EventQueue eq;
+    Router router{eq, 4};
+    eq.schedule(0, Event{[&] { router.input_units[0].put(Flit{0}); }});
+    eq.schedule(0, Event{[&] { router.input_units[1].put(Flit{1}); }});
+    eq.schedule(0, Event{[&] { router.input_units[2].put(Flit{2}); }});
 
     router.run();
 
-    std::cout << "out_buf len: " << router.out_buf.size() << std::endl;
+    // std::cout << "out_buf len: " << router.out_buf.size() << std::endl;
 
     return 0;
 }

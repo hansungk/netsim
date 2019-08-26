@@ -1,29 +1,51 @@
 #include "router.h"
 #include <iostream>
 
-void Router::put(const Flit &flit) {
+Router::Router(EventQueue &eq, int radix)
+    : eventq(eq) {
+    for (int i = 0; i < radix; i++) {
+        input_units.push_back(
+            InputUnit{*this, Event{[this, i] { route_compute(i); }}});
+        output_units.push_back(OutputUnit{});
+    }
+}
+
+void Router::InputUnit::put(const Flit &flit) {
     // If the buffer was empty, kickstart the pipeline
-    if (in_buf.empty())
-        eventq.reschedule(1, Event{[this] { vc_alloc(); }});
+    if (buf.empty()) {
+        router.eventq.reschedule(1, drain_event);
+    }
 
-    in_buf.push_back(flit);
+    buf.push_back(flit);
 }
 
-void Router::vc_alloc() {
-    std::cout << "[" << in_buf.front().flit_num << "] vc allocation\n";
+void Router::route_compute(int port) {
+    std::cout << "[" << input_units[port].buf.front().flit_num << "] route computation\n";
 
-    eventq.reschedule(1, Event{[this] { switch_alloc(); }});
+    eventq.reschedule(1, Event{[this, port] { vc_alloc(port); }});
 }
 
-void Router::switch_alloc() {
-    std::cout << "[" << in_buf.front().flit_num << "] switch allocation\n";
+void Router::vc_alloc(int port) {
+    std::cout << "[" << input_units[port].buf.front().flit_num << "] vc allocation\n";
 
-    Flit flit = in_buf.front();
-    in_buf.pop_front();
-    out_buf.push_back(flit);
+    eventq.reschedule(1, Event{[this, port] { switch_alloc(port); }});
+}
 
-    if (!in_buf.empty()) {
-        eventq.reschedule(1, Event{[this] { vc_alloc(); }});
+void Router::switch_alloc(int port) {
+    std::cout << "[" << input_units[port].buf.front().flit_num << "] switch allocation\n";
+
+    eventq.reschedule(1, Event{[this, port] { switch_traverse(port); }});
+}
+
+void Router::switch_traverse(int port) {
+    std::cout << "[" << input_units[port].buf.front().flit_num << "] switch traverse\n";
+
+    Flit flit = input_units[port].buf.front();
+    input_units[port].buf.pop_front();
+    output_units[port].buf.push_back(flit);
+
+    if (!input_units[port].buf.empty()) {
+        eventq.reschedule(1, Event{[this, port] { route_compute(port); }});
     }
 }
 
