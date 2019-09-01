@@ -13,7 +13,11 @@ bool Topology::connect(const RouterPortPair input,
 
 Sim::Sim(int router_count, int radix, Topology &top) : eventq(), topology(top) {
     for (int id = 0; id < router_count; id++) {
-        routers.emplace_back(eventq, id, radix);
+        std::vector<Topology::RouterPortPair> dest_ports;
+        for (int port = 0; port < radix; port++) {
+            dest_ports.push_back(topology.find({id, port}));
+        }
+        routers.emplace_back(eventq, id, radix, dest_ports);
     }
 }
 

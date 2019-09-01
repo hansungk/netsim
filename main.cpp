@@ -7,8 +7,7 @@ int main(void) {
     auto conn =
         top.connect({0, 0}, {1, 0}) &&
         top.connect({1, 0}, {2, 0}) &&
-        top.connect({2, 0}, {3, 0}) &&
-        top.connect({3, 0}, {0, 0});
+        top.connect({2, 0}, {3, 0});
     if (!conn) {
         std::cerr << "error: bad connectivity\n";
         exit(EXIT_FAILURE);

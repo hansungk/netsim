@@ -2,13 +2,15 @@
 #include <iostream>
 #include <cassert>
 
-Router::Router(EventQueue &eq, int id_, int radix)
-    : eventq(eq), tick_event(id_, [](Router &r) { r.tick(); }), id(id_) {
+Router::Router(EventQueue &eq, int id_, int radix,
+               const std::vector<Topology::RouterPortPair> &dp)
+    : eventq(eq), tick_event(id_, [](Router &r) { r.tick(); }),
+      destination_ports(dp), id(id_) {
     std::cout << "Router::Router(id=" << id << ")\n";
 
     for (int port = 0; port < radix; port++) {
-        input_units.push_back(InputUnit{});
-        output_units.push_back(OutputUnit{});
+        input_units.emplace_back();
+        output_units.emplace_back();
     }
 }
 
@@ -123,13 +125,22 @@ void Router::switch_traverse() {
             std::cout << "[" << port << "] switch traverse\n";
             assert(!iu.buf.empty());
 
-            auto &ou = output_units[iu.state.route];
             Flit flit = iu.buf.front();
             iu.buf.pop_front();
 
             // No output speedup: there is no need for an output buffer
             // (Ch17.3).  Flits that exit the switch are directly placed on the
             // channel.
+            auto dest = destination_ports[port];
+            if (dest != Topology::not_connected) {
+                // FIXME: link traversal time fixed to 1
+                eventq.reschedule(1, Event{dest.first, [=](Router &r) {
+                        r.put(dest.second, flit);
+                        }});
+            }
+
+            // With output speedup:
+            // auto &ou = output_units[iu.state.route];
             // ou.buf.push_back(flit);
 
             // ST -> ?? transition

@@ -4,6 +4,31 @@
 #include "event.h"
 #include <deque>
 #include <iostream>
+#include <map>
+
+// Encodes router topology in a bidirectional map.
+// Supports runtime checking for connectivity error.
+class Topology {
+public:
+    using RouterPortPair = std::pair<int /*router*/, int /*port*/>;
+
+    RouterPortPair find(RouterPortPair input) {
+        auto it = in_out_map.find(input);
+        if (it == in_out_map.end()) {
+            return not_connected;
+        } else {
+            return it->second;
+        }
+    }
+
+    bool connect(const RouterPortPair input, const RouterPortPair output);
+
+    static constexpr RouterPortPair not_connected{-1, -1};
+
+private:
+    std::map<RouterPortPair, RouterPortPair> in_out_map;
+    std::map<RouterPortPair, RouterPortPair> out_in_map;
+};
 
 class Flit {
 public:
@@ -13,7 +38,8 @@ public:
 
 class Router {
 public:
-    Router(EventQueue &eq, int id, int radix);
+    Router(EventQueue &eq, int id, int radix,
+           const std::vector<Topology::RouterPortPair> &dp);
 
     // Router::tick_event captures pointer to 'this', and is initialized in the
     // Router's constructor. Therefore, we should disallow moving/copying of
@@ -71,6 +97,8 @@ private:
     long last_tick; // record the last tick time to prevent double-tick in
                     // single cycle
     bool reschedule_next_tick{false}; // self-tick at next cycle?
+    std::vector<Topology::RouterPortPair>
+        destination_ports; // where are my output ports connected to?
 
 public:
     int id; // numerical router ID
