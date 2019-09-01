@@ -30,13 +30,21 @@ void Router::put(int port, const Flit &flit) {
 void Router::tick() {
     // Make sure this router has not been already ticked in this cycle.
     assert(eventq.curr_time() != last_tick);
+    reschedule_next_tick = false;
+
     std::cout << "Tick!\n";
 
     // Process each pipeline stage.
-    route_compute();
+    // Stages are processed in reverse order to prevent coherence bug.  E.g.,
+    // if a flit succeeds in route_compute() and advances to the VA stage, and
+    // then vc_alloc() is called, it would then get processed again in the same
+    // cycle.
+    switch_traverse();
+    switch_alloc();
     vc_alloc();
+    route_compute();
 
-    // Self-tick automatically unless all input ports are empty.
+    // Self-tick autonomously unless all input ports are empty.
     // FIXME: accuracy?
     bool empty = true;
     for (int i = 0; i < get_radix(); i++) {
@@ -45,6 +53,11 @@ void Router::tick() {
         }
     }
     if (!empty) {
+        reschedule_next_tick = true;
+    }
+
+    // Do the rescheduling at here once to prevent flooding the event queue.
+    if (reschedule_next_tick) {
         eventq.reschedule(1, tick_event);
     }
 
@@ -56,42 +69,74 @@ void Router::tick() {
 ///
 
 void Router::route_compute() {
-    std::cout << "route_compute(), router id=" << id << std::endl;
     for (int port = 0; port < get_radix(); port++) {
-        auto &input_unit = input_units[port];
-        if (input_unit.stage == PipelineStage::RC) {
+        auto &iu = input_units[port];
+        if (iu.stage == PipelineStage::RC) {
             std::cout << "[" << port << "] route computation\n";
-            assert(!input_unit.buf.empty());
+            assert(!iu.buf.empty());
 
             // TODO: simple routing: input port == output port
-            input_unit.state.route = port;
+            iu.state.route = port;
 
             // RC -> VA transition
-            input_unit.state.global = InputUnit::State::GlobalState::VCWait;
-            eventq.reschedule(1, tick_event);
+            iu.state.global = InputUnit::State::GlobalState::VCWait;
+            iu.stage = PipelineStage::VA;
+            reschedule_next_tick = true;
         }
     }
 }
 
 void Router::vc_alloc() {
-    // std::cout << "[" << input_units[port].buf.front().flit_num << "] vc allocation\n";
-    eventq.reschedule(1, tick_event);
+    for (int port = 0; port < get_radix(); port++) {
+        auto &iu = input_units[port];
+        if (iu.stage == PipelineStage::VA) {
+            std::cout << "[" << port << "] VC allocation\n";
+            assert(!iu.buf.empty());
+
+            // VA -> SA transition
+            iu.state.global = InputUnit::State::GlobalState::Active;
+            iu.stage = PipelineStage::SA;
+            reschedule_next_tick = true;
+        }
+    }
 }
 
-void Router::switch_alloc(int port) {
-    std::cout << "[" << input_units[port].buf.front().flit_num << "] switch allocation\n";
+void Router::switch_alloc() {
+    for (int port = 0; port < get_radix(); port++) {
+        auto &iu = input_units[port];
+        if (iu.stage == PipelineStage::SA) {
+            std::cout << "[" << port << "] switch allocation\n";
+            assert(!iu.buf.empty());
 
-    eventq.reschedule(1, tick_event);
+            // SA -> ST transition
+            iu.state.global = InputUnit::State::GlobalState::Active;
+            iu.stage = PipelineStage::ST;
+            reschedule_next_tick = true;
+        }
+    }
 }
 
-void Router::switch_traverse(int port) {
-    std::cout << "[" << input_units[port].buf.front().flit_num << "] switch traverse\n";
+void Router::switch_traverse() {
+    for (int port = 0; port < get_radix(); port++) {
+        auto &iu = input_units[port];
+        if (iu.stage == PipelineStage::ST) {
+            std::cout << "[" << port << "] switch traverse\n";
+            assert(!iu.buf.empty());
 
-    Flit flit = input_units[port].buf.front();
-    input_units[port].buf.pop_front();
-    output_units[port].buf.push_back(flit);
+            auto &ou = output_units[iu.state.route];
+            Flit flit = iu.buf.front();
+            iu.buf.pop_front();
+            ou.buf.push_back(flit);
 
-    if (!input_units[port].buf.empty()) {
-        eventq.reschedule(1, tick_event);
+            // ST -> ?? transition
+            iu.state.global = InputUnit::State::GlobalState::Active;
+
+            if (iu.buf.empty()) {
+                iu.stage = PipelineStage::Idle;
+            } else {
+                // FIXME: what if the next flit is a head flit?
+                reschedule_next_tick = true;
+            }
+        }
     }
 }

@@ -29,10 +29,6 @@ public:
     long curr_time() const { return time_; }
     void print() const;
 
-    // TODO: we need to keep a list of 'static' events that gets called for
-    // _every_ event cycle, e.g. the polling operations.  Otherwise, the
-    // simulator cannot autonomously add those events to the queue every time a
-    // new event is generated.
 private:
     using TimeEventPair = std::pair<long, Event>;
     static constexpr auto cmp = [](const auto &p1, const auto &p2) {
@@ -40,8 +36,7 @@ private:
     };
 
     long time_{0};
-    // @Speed: deque vs vector?
-    std::priority_queue<TimeEventPair, std::deque<TimeEventPair>,
+    std::priority_queue<TimeEventPair, std::vector<TimeEventPair>,
                         decltype(cmp)>
         queue{cmp};
 };

@@ -25,8 +25,8 @@ public:
     void put(int port, const Flit &flit);
     void route_compute();
     void vc_alloc();
-    void switch_alloc(int port);
-    void switch_traverse(int port);
+    void switch_alloc();
+    void switch_traverse();
 
     int get_radix() const { return input_units.size(); }
 
@@ -70,6 +70,7 @@ private:
     const Event tick_event; // self-tick event.
     long last_tick; // record the last tick time to prevent double-tick in
                     // single cycle
+    bool reschedule_next_tick{false}; // self-tick at next cycle?
 
 public:
     int id; // numerical router ID
