@@ -14,17 +14,27 @@ Router::Router(EventQueue &eq, int id_, int radix)
 
 void Router::put(int port, const Flit &flit) {
     std::cout << "Put!\n";
+    auto &iu = input_units[port];
 
-    // If the buffer was empty, kickstart the pipeline
-    if (input_units[port].buf.empty()) {
+    // If the buffer was empty, set stage to RC, and kickstart the pipeline
+    if (iu.buf.empty()) {
+        // Idle -> RC transition
+        iu.state.global = InputUnit::State::GlobalState::Routing;
+        iu.stage = PipelineStage::RC;
         eventq.reschedule(1, tick_event);
     }
 
-    input_units[port].buf.push_back(flit);
+    iu.buf.push_back(flit);
 }
 
 void Router::tick() {
+    // Make sure this router has not been already ticked in this cycle.
+    assert(eventq.curr_time() != last_tick);
     std::cout << "Tick!\n";
+
+    // Process each pipeline stage.
+    route_compute();
+    vc_alloc();
 
     // Self-tick automatically unless all input ports are empty.
     // FIXME: accuracy?
@@ -37,19 +47,34 @@ void Router::tick() {
     if (!empty) {
         eventq.reschedule(1, tick_event);
     }
+
+    last_tick = eventq.curr_time();
 }
 
-void Router::route_compute(int port) {
-    std::cout << "route_compute(), router id=" << id << ", port=" << port << "\n";
-    assert(!input_units[port].buf.empty());
-    std::cout << "[" << input_units[port].buf.front().flit_num << "] route computation\n";
+///
+/// Pipeline stages
+///
 
-    eventq.reschedule(1, tick_event);
+void Router::route_compute() {
+    std::cout << "route_compute(), router id=" << id << std::endl;
+    for (int port = 0; port < get_radix(); port++) {
+        auto &input_unit = input_units[port];
+        if (input_unit.stage == PipelineStage::RC) {
+            std::cout << "[" << port << "] route computation\n";
+            assert(!input_unit.buf.empty());
+
+            // TODO: simple routing: input port == output port
+            input_unit.state.route = port;
+
+            // RC -> VA transition
+            input_unit.state.global = InputUnit::State::GlobalState::VCWait;
+            eventq.reschedule(1, tick_event);
+        }
+    }
 }
 
-void Router::vc_alloc(int port) {
-    std::cout << "[" << input_units[port].buf.front().flit_num << "] vc allocation\n";
-
+void Router::vc_alloc() {
+    // std::cout << "[" << input_units[port].buf.front().flit_num << "] vc allocation\n";
     eventq.reschedule(1, tick_event);
 }
 

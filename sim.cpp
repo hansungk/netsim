@@ -10,7 +10,7 @@ Sim::Sim(int router_count) : eventq{} {
 void Sim::run() {
     while (!eventq.empty()) {
         auto e = eventq.pop();
-        std::cout << "[event @ t=" << eventq.time() << ":]\n";
+        std::cout << "[event @ t=" << eventq.curr_time() << ":]\n";
         process(e);
     }
 }

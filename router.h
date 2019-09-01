@@ -23,21 +23,36 @@ public:
 
     void tick();
     void put(int port, const Flit &flit);
-    void route_compute(int port);
-    void vc_alloc(int port);
+    void route_compute();
+    void vc_alloc();
     void switch_alloc(int port);
     void switch_traverse(int port);
 
     int get_radix() const { return input_units.size(); }
 
+    enum class PipelineStage {
+        Idle,
+        RC,
+        VA,
+        SA,
+        ST,
+    };
+
     struct InputUnit {
         struct State {
-            int global;
+            enum class GlobalState {
+                Idle,
+                Routing,
+                VCWait,
+                Active,
+                CreditWait,
+            } global;
             int route;
             int output_vc;
             int pointer;
             int credit_count;
         } state;
+        PipelineStage stage{PipelineStage::Idle};
         std::deque<Flit> buf;
     };
 
@@ -51,8 +66,10 @@ public:
     };
 
 private:
-    EventQueue &eventq;
-    const Event tick_event;
+    EventQueue &eventq;     // reference to the simulator-global event queue
+    const Event tick_event; // self-tick event.
+    long last_tick; // record the last tick time to prevent double-tick in
+                    // single cycle
 
 public:
     int id; // numerical router ID

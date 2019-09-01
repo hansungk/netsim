@@ -26,7 +26,7 @@ public:
     const Event &peek() const;
     Event pop();
 
-    long time() const { return time_; }
+    long curr_time() const { return time_; }
     void print() const;
 
     // TODO: we need to keep a list of 'static' events that gets called for
