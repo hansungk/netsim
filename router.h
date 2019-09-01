@@ -3,6 +3,7 @@
 
 #include "event.h"
 #include <deque>
+#include <iostream>
 
 class Flit {
 public:
@@ -12,21 +13,24 @@ public:
 
 class Router {
 public:
-    Router(EventQueue &eq_, int radix);
+    Router(EventQueue &eq, int id, int radix);
 
-    void run();
+    // Router::tick_event captures pointer to 'this', and is initialized in the
+    // Router's constructor. Therefore, we should disallow moving/copying of
+    // Router to prevent the mutation of 'this'.
+    Router(const Router &) = delete;
+    Router(Router &&) = default;
+
+    void tick();
+    void put(int port, const Flit &flit);
     void route_compute(int port);
     void vc_alloc(int port);
     void switch_alloc(int port);
     void switch_traverse(int port);
 
-    struct InputUnit {
-        InputUnit(Router &r, const Event &e)
-            : router(r), drain_event(e) {}
-        void put(const Flit &flit);
+    int get_radix() const { return input_units.size(); }
 
-        Router &router;
-        Event drain_event;
+    struct InputUnit {
         struct State {
             int global;
             int route;
@@ -46,11 +50,14 @@ public:
         std::deque<Flit> buf;
     };
 
-    std::vector<InputUnit> input_units;
-    std::vector<OutputUnit> output_units;
-
 private:
     EventQueue &eventq;
+    const Event tick_event;
+
+public:
+    int id; // numerical router ID
+    std::vector<InputUnit> input_units;
+    std::vector<OutputUnit> output_units;
 };
 
 #endif

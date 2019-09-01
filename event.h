@@ -4,13 +4,14 @@
 #include <functional>
 #include <queue>
 
-// An Event has a callback function.
-// This is a by-value type.
+class Router;
+
 class Event {
 public:
-    Event(std::function<void()> f) : func(f) {}
+    Event(int i, std::function<void(Router &)> f_) : id(i), f(f_) {}
 
-    std::function<void()> func; // event handler
+    int id;                          // target router ID
+    std::function<void(Router &)> f; // callback on a specific router
 };
 
 class EventQueue {
@@ -39,7 +40,8 @@ private:
     };
 
     long time_{0};
-    std::priority_queue<TimeEventPair, std::vector<TimeEventPair>,
+    // @Speed: deque vs vector?
+    std::priority_queue<TimeEventPair, std::deque<TimeEventPair>,
                         decltype(cmp)>
         queue{cmp};
 };
