@@ -126,7 +126,11 @@ void Router::switch_traverse() {
             auto &ou = output_units[iu.state.route];
             Flit flit = iu.buf.front();
             iu.buf.pop_front();
-            ou.buf.push_back(flit);
+
+            // No output speedup: there is no need for an output buffer
+            // (Ch17.3).  Flits that exit the switch are directly placed on the
+            // channel.
+            // ou.buf.push_back(flit);
 
             // ST -> ?? transition
             iu.state.global = InputUnit::State::GlobalState::Active;

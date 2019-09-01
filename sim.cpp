@@ -1,9 +1,19 @@
 #include "sim.h"
 #include <iostream>
 
-Sim::Sim(int router_count) : eventq{} {
+bool Topology::connect(const RouterPortPair input,
+                       const RouterPortPair output) {
+    auto insert_success = in_out_map.insert({input, output}).second;
+    if (!out_in_map.insert({output, input}).second) {
+        // Bad connectivity: destination port is already connected
+        return false;
+    }
+    return insert_success;
+}
+
+Sim::Sim(int router_count, int radix, Topology &top) : eventq(), topology(top) {
     for (int id = 0; id < router_count; id++) {
-        routers.emplace_back(eventq, id, 4);
+        routers.emplace_back(eventq, id, radix);
     }
 }
 
