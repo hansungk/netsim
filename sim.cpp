@@ -24,7 +24,6 @@ Sim::Sim(int router_count, int radix, Topology &top) : eventq(), topology(top) {
 void Sim::run() {
     while (!eventq.empty()) {
         auto e = eventq.pop();
-        std::cout << "[event @ t=" << eventq.curr_time() << ":]\n";
         process(e);
     }
 }

@@ -4,6 +4,7 @@
 #include "event.h"
 #include <deque>
 #include <iostream>
+#include <iomanip>
 #include <map>
 
 // Encodes router topology in a bidirectional map.
@@ -32,8 +33,15 @@ private:
 
 class Flit {
 public:
-    Flit(int n) : flit_num(n) {}
-    int flit_num;
+    enum class Type {
+        head,
+        body,
+    };
+
+    Flit(Type t, int p) : type(t), payload(p) {}
+
+    Type type;
+    int payload;
 };
 
 class Router {
@@ -92,12 +100,19 @@ public:
     };
 
 private:
+    // Debug output stream
+    std::ostream &dbg() const {
+        auto &out = std::cout;
+        out << "[@" << std::setw(3) << eventq.curr_time() << "] ";
+        return out;
+    }
+
     EventQueue &eventq;     // reference to the simulator-global event queue
     const Event tick_event; // self-tick event.
-    long last_tick; // record the last tick time to prevent double-tick in
-                    // single cycle
+    long last_tick{-1}; // record the last tick time to prevent double-tick in
+                        // single cycle
     bool reschedule_next_tick{false}; // self-tick at next cycle?
-    std::vector<Topology::RouterPortPair>
+    const std::vector<Topology::RouterPortPair>
         destination_ports; // where are my output ports connected to?
 
 public:

@@ -6,8 +6,6 @@ Router::Router(EventQueue &eq, int id_, int radix,
                const std::vector<Topology::RouterPortPair> &dp)
     : eventq(eq), tick_event(id_, [](Router &r) { r.tick(); }),
       destination_ports(dp), id(id_) {
-    std::cout << "Router::Router(id=" << id << ")\n";
-
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
         output_units.emplace_back();
@@ -15,7 +13,7 @@ Router::Router(EventQueue &eq, int id_, int radix,
 }
 
 void Router::put(int port, const Flit &flit) {
-    std::cout << "Put!\n";
+    dbg() << "Put!\n";
     auto &iu = input_units[port];
 
     // If the buffer was empty, set stage to RC, and kickstart the pipeline
@@ -33,8 +31,6 @@ void Router::tick() {
     // Make sure this router has not been already ticked in this cycle.
     assert(eventq.curr_time() != last_tick);
     reschedule_next_tick = false;
-
-    std::cout << "Tick!\n";
 
     // Process each pipeline stage.
     // Stages are processed in reverse order to prevent coherence bug.  E.g.,
@@ -74,7 +70,7 @@ void Router::route_compute() {
     for (int port = 0; port < get_radix(); port++) {
         auto &iu = input_units[port];
         if (iu.stage == PipelineStage::RC) {
-            std::cout << "[" << port << "] route computation\n";
+            dbg() << "[" << iu.buf.front().payload << "] route computation\n";
             assert(!iu.buf.empty());
 
             // TODO: simple routing: input port == output port
@@ -92,7 +88,7 @@ void Router::vc_alloc() {
     for (int port = 0; port < get_radix(); port++) {
         auto &iu = input_units[port];
         if (iu.stage == PipelineStage::VA) {
-            std::cout << "[" << port << "] VC allocation\n";
+            dbg() << "[" << iu.buf.front().payload << "] VC allocation\n";
             assert(!iu.buf.empty());
 
             // VA -> SA transition
@@ -107,7 +103,7 @@ void Router::switch_alloc() {
     for (int port = 0; port < get_radix(); port++) {
         auto &iu = input_units[port];
         if (iu.stage == PipelineStage::SA) {
-            std::cout << "[" << port << "] switch allocation\n";
+            dbg() << "[" << iu.buf.front().payload << "] switch allocation\n";
             assert(!iu.buf.empty());
 
             // SA -> ST transition
@@ -122,7 +118,7 @@ void Router::switch_traverse() {
     for (int port = 0; port < get_radix(); port++) {
         auto &iu = input_units[port];
         if (iu.stage == PipelineStage::ST) {
-            std::cout << "[" << port << "] switch traverse\n";
+            dbg() << "[" << iu.buf.front().payload << "] switch traverse\n";
             assert(!iu.buf.empty());
 
             Flit flit = iu.buf.front();
@@ -135,8 +131,8 @@ void Router::switch_traverse() {
             if (dest != Topology::not_connected) {
                 // FIXME: link traversal time fixed to 1
                 eventq.reschedule(1, Event{dest.first, [=](Router &r) {
-                        r.put(dest.second, flit);
-                        }});
+                                               r.put(dest.second, flit);
+                                           }});
             }
 
             // With output speedup:
@@ -150,6 +146,7 @@ void Router::switch_traverse() {
                 iu.stage = PipelineStage::Idle;
             } else {
                 // FIXME: what if the next flit is a head flit?
+                iu.stage = PipelineStage::SA;
                 reschedule_next_tick = true;
             }
         }

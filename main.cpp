@@ -14,9 +14,10 @@ int main(void) {
     }
 
     Sim sim{4, 1, top};
-    sim.eventq.schedule(0, Event{0, [](Router &r) { r.put(0, Flit{0}); }});
-    // sim.eventq.schedule(0, Event{[&] { sim.routers[0].input_units[0].put(Flit{1}); }});
-    // sim.eventq.schedule(0, Event{[&] { sim.routers[0].input_units[0].put(Flit{2}); }});
+    sim.eventq.schedule(0, Event{0, [](Router &r) { r.put(0, Flit{Flit::Type::head, 0}); }});
+    sim.eventq.schedule(1, Event{0, [](Router &r) { r.put(0, Flit{Flit::Type::body, 1}); }});
+    sim.eventq.schedule(2, Event{0, [](Router &r) { r.put(0, Flit{Flit::Type::body, 2}); }});
+    sim.eventq.schedule(3, Event{0, [](Router &r) { r.put(0, Flit{Flit::Type::body, 3}); }});
 
     sim.run();
 
