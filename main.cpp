@@ -3,15 +3,11 @@
 #include <iostream>
 
 int main(void) {
-    Topology top;
-    auto conn =
-        top.connect({0, 0}, {1, 0}) &&
-        top.connect({1, 0}, {2, 0}) &&
-        top.connect({2, 0}, {3, 0});
-    if (!conn) {
-        std::cerr << "error: bad connectivity\n";
-        exit(EXIT_FAILURE);
-    }
+    Topology top{
+        {{0, 0}, {1, 0}},
+        {{1, 0}, {2, 0}},
+        {{2, 0}, {3, 0}},
+    };
 
     Sim sim{4, 1, top};
     sim.eventq.schedule(0, Event{0, [](Router &r) { r.put(0, Flit{Flit::Type::head, 0}); }});

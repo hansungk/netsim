@@ -1,6 +1,35 @@
 #include "router.h"
-#include <iostream>
 #include <cassert>
+#include <iomanip>
+#include <iostream>
+
+Topology::Topology(
+    std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs) {
+    bool success = true;
+    for (auto [src, dst] : pairs) {
+        success &= connect(src, dst);
+    }
+    if (!success) {
+        // TODO: fail gracefully
+        std::cerr << "error: bad connectivity" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
+Topology Topology::ring() {
+    Topology top;
+    return top;
+}
+
+bool Topology::connect(const RouterPortPair input,
+                       const RouterPortPair output) {
+    auto insert_success = in_out_map.insert({input, output}).second;
+    if (!out_in_map.insert({output, input}).second) {
+        // Bad connectivity: destination port is already connected
+        return false;
+    }
+    return insert_success;
+}
 
 Router::Router(EventQueue &eq, int id_, int radix,
                const std::vector<Topology::RouterPortPair> &dp)
@@ -12,8 +41,14 @@ Router::Router(EventQueue &eq, int id_, int radix,
     }
 }
 
+std::ostream &Router::dbg() const {
+    auto &out = std::cout;
+    out << "[@" << std::setw(3) << eventq.curr_time() << "] ";
+    return out;
+}
+
 void Router::put(int port, const Flit &flit) {
-    dbg() << "Put!\n";
+    dbg() << "[" << flit.payload << "] Put!\n";
     auto &iu = input_units[port];
 
     // If the buffer was empty, set stage to RC, and kickstart the pipeline

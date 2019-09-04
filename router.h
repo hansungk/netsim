@@ -3,8 +3,6 @@
 
 #include "event.h"
 #include <deque>
-#include <iostream>
-#include <iomanip>
 #include <map>
 
 // Encodes router topology in a bidirectional map.
@@ -12,6 +10,11 @@
 class Topology {
 public:
     using RouterPortPair = std::pair<int /*router*/, int /*port*/>;
+
+    static Topology ring();
+
+    Topology() = default;
+    Topology(std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);
 
     RouterPortPair find(RouterPortPair input) {
         auto it = in_out_map.find(input);
@@ -31,6 +34,8 @@ private:
     std::map<RouterPortPair, RouterPortPair> out_in_map;
 };
 
+// Flit encoding.
+// Follows Fig. 16.13.
 class Flit {
 public:
     enum class Type {
@@ -101,11 +106,7 @@ public:
 
 private:
     // Debug output stream
-    std::ostream &dbg() const {
-        auto &out = std::cout;
-        out << "[@" << std::setw(3) << eventq.curr_time() << "] ";
-        return out;
-    }
+    std::ostream &dbg() const;
 
     EventQueue &eventq;     // reference to the simulator-global event queue
     const Event tick_event; // self-tick event.

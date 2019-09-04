@@ -19,7 +19,7 @@ public:
 
     void handler();
 
-    EventQueue eventq; // global event queue
+    EventQueue eventq{}; // global event queue
     Topology &topology;
     std::vector<Router> routers;
 };
