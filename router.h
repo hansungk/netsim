@@ -27,6 +27,10 @@ public:
 
     bool connect(const RouterPortPair input, const RouterPortPair output);
 
+    // Helper functions to get ID of terminal nodes.
+    static int src(int id) { return -id - 1; }
+    static int dst(int id) { return -id - 1; }
+
     static constexpr RouterPortPair not_connected{-1, -1};
 
 private:
@@ -39,13 +43,19 @@ private:
 class Flit {
 public:
     enum class Type {
-        head,
-        body,
+        Head,
+        Body,
+    };
+
+    struct RouteInfo {
+        int src; // source node ID
+        int dst; // destination node ID
     };
 
     Flit(Type t, int p) : type(t), payload(p) {}
 
     Type type;
+    RouteInfo route_info;
     int payload;
 };
 

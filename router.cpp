@@ -7,7 +7,13 @@ Topology::Topology(
     std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs) {
     bool success = true;
     for (auto [src, dst] : pairs) {
-        success &= connect(src, dst);
+        if (!connect(src, dst)) {
+            // TODO: fail gracefully
+            std::cerr << "fatal: connectivity error when connecting ";
+            std::cerr << "[" << src.first << ", " << src.second << "] to ";
+            std::cerr << "[" << dst.first << ", " << dst.second << "]" << std::endl;
+            exit(EXIT_FAILURE);
+        }
     }
     if (!success) {
         // TODO: fail gracefully
@@ -48,6 +54,7 @@ std::ostream &Router::dbg() const {
 }
 
 void Router::put(int port, const Flit &flit) {
+    assert(port < get_radix() && "no such port!");
     dbg() << "[" << flit.payload << "] Put!\n";
     auto &iu = input_units[port];
 
