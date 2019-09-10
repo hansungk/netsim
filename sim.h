@@ -21,7 +21,7 @@ public:
 
     EventQueue eventq{}; // global event queue
     Topology &topology;
-    std::vector<Router> routers;
+    std::vector<Router> routers{}; // sorted by ID
 };
 
 #endif

@@ -10,7 +10,7 @@ class Event {
 public:
     Event(int i, std::function<void(Router &)> f_) : id(i), f(f_) {}
 
-    int id;                          // target router ID
+    unsigned int id;                 // target router ID
     std::function<void(Router &)> f; // callback on a specific router
 };
 

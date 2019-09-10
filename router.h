@@ -14,7 +14,8 @@ public:
     static Topology ring();
 
     Topology() = default;
-    Topology(std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);
+    Topology(int router_count, int radix,
+             std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);
 
     RouterPortPair find(RouterPortPair input) {
         auto it = in_out_map.find(input);
@@ -28,10 +29,13 @@ public:
     bool connect(const RouterPortPair input, const RouterPortPair output);
 
     // Helper functions to get ID of terminal nodes.
-    static int src(int id) { return -id - 1; }
-    static int dst(int id) { return -id - 1; }
+    static unsigned int src(unsigned int id) { return -id - 1; }
+    static unsigned int dst(unsigned int id) { return -id - 1; }
 
     static constexpr RouterPortPair not_connected{-1, -1};
+
+    int router_count;
+    int radix;
 
 private:
     std::map<RouterPortPair, RouterPortPair> in_out_map;
@@ -118,13 +122,16 @@ private:
     // Debug output stream
     std::ostream &dbg() const;
 
+    // Mark self-reschedule on the next tick
+    void mark_self_reschedule() { reschedule_next_tick = true; }
+
     EventQueue &eventq;     // reference to the simulator-global event queue
     const Event tick_event; // self-tick event.
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
     bool reschedule_next_tick{false}; // self-tick at next cycle?
     const std::vector<Topology::RouterPortPair>
-        destination_ports; // where are my output ports connected to?
+        destination_ports; // stores the other end of the output ports
 
 public:
     int id; // numerical router ID

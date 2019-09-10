@@ -4,21 +4,18 @@
 #include <iostream>
 
 Topology::Topology(
-    std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs) {
-    bool success = true;
+    int rc, int rx,
+    std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs)
+    : router_count(rc), radix(rx) {
     for (auto [src, dst] : pairs) {
         if (!connect(src, dst)) {
             // TODO: fail gracefully
             std::cerr << "fatal: connectivity error when connecting ";
             std::cerr << "[" << src.first << ", " << src.second << "] to ";
-            std::cerr << "[" << dst.first << ", " << dst.second << "]" << std::endl;
+            std::cerr << "[" << dst.first << ", " << dst.second << "]"
+                      << std::endl;
             exit(EXIT_FAILURE);
         }
-    }
-    if (!success) {
-        // TODO: fail gracefully
-        std::cerr << "error: bad connectivity" << std::endl;
-        exit(EXIT_FAILURE);
     }
 }
 
@@ -93,7 +90,7 @@ void Router::tick() {
         }
     }
     if (!empty) {
-        reschedule_next_tick = true;
+        mark_self_reschedule();
     }
 
     // Do the rescheduling at here once to prevent flooding the event queue.
@@ -112,7 +109,10 @@ void Router::route_compute() {
     for (int port = 0; port < get_radix(); port++) {
         auto &iu = input_units[port];
         if (iu.stage == PipelineStage::RC) {
-            dbg() << "[" << iu.buf.front().payload << "] route computation\n";
+            auto flit = iu.buf.front();
+            dbg() << "[" << flit.payload
+                  << "] route computation (dst:" << flit.route_info.dst
+                  << ")\n";
             assert(!iu.buf.empty());
 
             // TODO: simple routing: input port == output port
@@ -121,7 +121,7 @@ void Router::route_compute() {
             // RC -> VA transition
             iu.state.global = InputUnit::State::GlobalState::VCWait;
             iu.stage = PipelineStage::VA;
-            reschedule_next_tick = true;
+            mark_self_reschedule();
         }
     }
 }
@@ -136,7 +136,7 @@ void Router::vc_alloc() {
             // VA -> SA transition
             iu.state.global = InputUnit::State::GlobalState::Active;
             iu.stage = PipelineStage::SA;
-            reschedule_next_tick = true;
+            mark_self_reschedule();
         }
     }
 }
@@ -151,7 +151,7 @@ void Router::switch_alloc() {
             // SA -> ST transition
             iu.state.global = InputUnit::State::GlobalState::Active;
             iu.stage = PipelineStage::ST;
-            reschedule_next_tick = true;
+            mark_self_reschedule();
         }
     }
 }
@@ -189,7 +189,7 @@ void Router::switch_traverse() {
             } else {
                 // FIXME: what if the next flit is a head flit?
                 iu.stage = PipelineStage::SA;
-                reschedule_next_tick = true;
+                mark_self_reschedule();
             }
         }
     }
