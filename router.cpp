@@ -4,16 +4,11 @@
 #include <iostream>
 
 Topology::Topology(
-    int rc, int rx,
-    std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs)
-    : router_count(rc), radix(rx) {
+    std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs) {
     for (auto [src, dst] : pairs) {
         if (!connect(src, dst)) {
             // TODO: fail gracefully
-            std::cerr << "fatal: connectivity error when connecting ";
-            std::cerr << "[" << src.first << ", " << src.second << "] to ";
-            std::cerr << "[" << dst.first << ", " << dst.second << "]"
-                      << std::endl;
+            std::cerr << "fatal: connectivity error" << std::endl;
             exit(EXIT_FAILURE);
         }
     }
@@ -21,6 +16,7 @@ Topology::Topology(
 
 Topology Topology::ring() {
     Topology top;
+    // TODO
     return top;
 }
 
@@ -36,7 +32,7 @@ bool Topology::connect(const RouterPortPair input,
 
 Router::Router(EventQueue &eq, int id_, int radix,
                const std::vector<Topology::RouterPortPair> &dp)
-    : eventq(eq), tick_event(id_, [](Router &r) { r.tick(); }),
+    : eventq(eq), tick_event(RtrId{id_}, [](Node &n) { n.tick(); }),
       destination_ports(dp), id(id_) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
@@ -172,8 +168,8 @@ void Router::switch_traverse() {
             auto dest = destination_ports[port];
             if (dest != Topology::not_connected) {
                 // FIXME: link traversal time fixed to 1
-                eventq.reschedule(1, Event{dest.first, [=](Router &r) {
-                                               r.put(dest.second, flit);
+                eventq.reschedule(1, Event{dest.first, [=](Node &n) {
+                                               n.put(dest.second, flit);
                                            }});
             }
 

@@ -3,19 +3,20 @@
 
 #include "event.h"
 #include <deque>
+#include <iostream>
 #include <map>
 
 // Encodes router topology in a bidirectional map.
 // Supports runtime checking for connectivity error.
 class Topology {
 public:
-    using RouterPortPair = std::pair<int /*router*/, int /*port*/>;
+    using RouterPortPair = std::pair<NodeId, int /*port*/>;
+    static constexpr RouterPortPair not_connected{RtrId{-1}, -1};
 
     static Topology ring();
 
     Topology() = default;
-    Topology(int router_count, int radix,
-             std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);
+    Topology(std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);
 
     RouterPortPair find(RouterPortPair input) {
         auto it = in_out_map.find(input);
@@ -31,11 +32,6 @@ public:
     // Helper functions to get ID of terminal nodes.
     static unsigned int src(unsigned int id) { return -id - 1; }
     static unsigned int dst(unsigned int id) { return -id - 1; }
-
-    static constexpr RouterPortPair not_connected{-1, -1};
-
-    int router_count;
-    int radix;
 
 private:
     std::map<RouterPortPair, RouterPortPair> in_out_map;
@@ -63,7 +59,36 @@ public:
     int payload;
 };
 
-class Router {
+class Node {
+public:
+    virtual void put(int port, const Flit &flit) = 0;
+    virtual void tick() = 0;
+};
+
+/// A source node.
+class Source : public Node {
+public:
+    void tick() override {
+        std::cout << "Source::tick()\n";
+    }
+    void put(int port, const Flit &flit) override {
+        std::cout << "Source::put()\n";
+    }
+};
+
+/// A destination node.
+class Destination : public Node {
+public:
+    void tick() override {
+        std::cout << "Destination::tick()\n";
+    }
+    void put(int port, const Flit &flit) override {
+        std::cout << "Destination::put()\n";
+    }
+};
+
+/// A router (or a "switch") node.
+class Router : public Node {
 public:
     Router(EventQueue &eq, int id, int radix,
            const std::vector<Topology::RouterPortPair> &dp);
@@ -74,8 +99,8 @@ public:
     Router(const Router &) = delete;
     Router(Router &&) = default;
 
-    void tick();
-    void put(int port, const Flit &flit);
+    void tick() override;
+    void put(int port, const Flit &flit) override;
     void route_compute();
     void vc_alloc();
     void switch_alloc();
