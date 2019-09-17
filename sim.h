@@ -10,7 +10,7 @@ void fatal(const char *fmt, ...);
 
 class Sim {
 public:
-    Sim(int router_count, int radix, Topology &top);
+    Sim(int terminal_count, int router_count, int radix, Topology &top);
 
     // Run the simulator.
     void run();

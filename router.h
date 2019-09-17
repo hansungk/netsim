@@ -68,9 +68,7 @@ public:
 /// A source node.
 class Source : public Node {
 public:
-    void tick() override {
-        std::cout << "Source::tick()\n";
-    }
+    void tick() override { std::cout << "Source::tick()\n"; }
     void put(int port, const Flit &flit) override {
         std::cout << "Source::put()\n";
     }
@@ -79,9 +77,7 @@ public:
 /// A destination node.
 class Destination : public Node {
 public:
-    void tick() override {
-        std::cout << "Destination::tick()\n";
-    }
+    void tick() override { std::cout << "Destination::tick()\n"; }
     void put(int port, const Flit &flit) override {
         std::cout << "Destination::put()\n";
     }

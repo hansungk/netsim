@@ -165,11 +165,11 @@ void Router::switch_traverse() {
             // No output speedup: there is no need for an output buffer
             // (Ch17.3).  Flits that exit the switch are directly placed on the
             // channel.
-            auto dest = destination_ports[port];
-            if (dest != Topology::not_connected) {
+            auto dst_pair = destination_ports[port];
+            if (dst_pair != Topology::not_connected) {
                 // FIXME: link traversal time fixed to 1
-                eventq.reschedule(1, Event{dest.first, [=](Node &n) {
-                                               n.put(dest.second, flit);
+                eventq.reschedule(1, Event{dst_pair.first, [=](Node &n) {
+                                               n.put(dst_pair.second, flit);
                                            }});
             }
 

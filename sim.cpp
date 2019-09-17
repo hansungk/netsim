@@ -1,7 +1,8 @@
 #include "sim.h"
 #include <iostream>
 
-Sim::Sim(int router_count, int radix, Topology &top) : topology(top) {
+Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
+    : topology(top), src_nodes(terminal_count), dst_nodes(terminal_count) {
     for (int id = 0; id < router_count; id++) {
         // Initialize port destination designators for each router
         std::vector<Topology::RouterPortPair> dest_ports;
