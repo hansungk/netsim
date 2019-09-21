@@ -22,8 +22,8 @@ public:
     EventQueue eventq{}; // global event queue
     Topology &topology;
     std::vector<Router> routers{};
-    std::vector<Source> src_nodes{};
-    std::vector<Destination> dst_nodes{};
+    std::vector<Router> src_nodes{};
+    std::vector<Router> dst_nodes{};
 };
 
 #endif

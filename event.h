@@ -5,8 +5,6 @@
 #include <queue>
 #include <variant>
 
-class Node;
-
 struct SrcId {
     int id;
     bool operator<(const SrcId &b) const { return id < b.id; }
@@ -27,12 +25,14 @@ struct RtrId {
 
 using NodeId = std::variant<SrcId, DstId, RtrId>;
 
+class Router;
+
 class Event {
 public:
-    Event(NodeId i, std::function<void(Node &)> f_) : id(i), f(f_) {}
+    Event(NodeId i, std::function<void(Router &)> f_) : id(i), f(f_) {}
 
     NodeId id;                       // target router ID
-    std::function<void(Node &)> f; // callback on a specific router
+    std::function<void(Router &)> f; // callback on a specific router
 };
 
 class EventQueue {

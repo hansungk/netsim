@@ -24,10 +24,10 @@ int main(void) {
     };
 
     Sim sim{4, 4, 4, top};
-    sim.eventq.schedule(0, Event{SrcId{0}, [](Node &n) { n.put(2, Flit{Flit::Type::Head, 0}); }});
-    sim.eventq.schedule(1, Event{RtrId{0}, [](Node &n) { n.put(2, Flit{Flit::Type::Body, 1}); }});
-    sim.eventq.schedule(2, Event{RtrId{0}, [](Node &n) { n.put(2, Flit{Flit::Type::Body, 2}); }});
-    sim.eventq.schedule(3, Event{RtrId{0}, [](Node &n) { n.put(2, Flit{Flit::Type::Body, 3}); }});
+    sim.eventq.schedule(0, Event{SrcId{0}, [](Router &r) { r.put(2, Flit{Flit::Type::Head, 0}); }});
+    sim.eventq.schedule(1, Event{RtrId{0}, [](Router &r) { r.put(2, Flit{Flit::Type::Body, 1}); }});
+    sim.eventq.schedule(2, Event{RtrId{0}, [](Router &r) { r.put(2, Flit{Flit::Type::Body, 2}); }});
+    sim.eventq.schedule(3, Event{RtrId{0}, [](Router &r) { r.put(2, Flit{Flit::Type::Body, 3}); }});
 
     sim.run();
 

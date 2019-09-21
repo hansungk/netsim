@@ -30,10 +30,10 @@ bool Topology::connect(const RouterPortPair input,
     return insert_success;
 }
 
-Router::Router(EventQueue &eq, int id_, int radix,
+Router::Router(EventQueue &eq, NodeType t, int id_, int radix,
                const std::vector<Topology::RouterPortPair> &dp)
-    : eventq(eq), tick_event(RtrId{id_}, [](Node &n) { n.tick(); }),
-      destination_ports(dp), id(id_) {
+    : eventq(eq), type(t), tick_event(RtrId{id_}, [](Router &r) { r.tick(); }),
+      output_destinations(dp), id(id_) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
         output_units.emplace_back();
@@ -165,11 +165,11 @@ void Router::switch_traverse() {
             // No output speedup: there is no need for an output buffer
             // (Ch17.3).  Flits that exit the switch are directly placed on the
             // channel.
-            auto dst_pair = destination_ports[port];
+            auto dst_pair = output_destinations[port];
             if (dst_pair != Topology::not_connected) {
                 // FIXME: link traversal time fixed to 1
-                eventq.reschedule(1, Event{dst_pair.first, [=](Node &n) {
-                                               n.put(dst_pair.second, flit);
+                eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
+                                               r.put(dst_pair.second, flit);
                                            }});
             }
 

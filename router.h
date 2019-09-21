@@ -59,34 +59,17 @@ public:
     int payload;
 };
 
-class Node {
-public:
-    virtual void put(int port, const Flit &flit) = 0;
-    virtual void tick() = 0;
-};
-
-/// A source node.
-class Source : public Node {
-public:
-    void tick() override { std::cout << "Source::tick()\n"; }
-    void put(int port, const Flit &flit) override {
-        std::cout << "Source::put()\n";
-    }
-};
-
-/// A destination node.
-class Destination : public Node {
-public:
-    void tick() override { std::cout << "Destination::tick()\n"; }
-    void put(int port, const Flit &flit) override {
-        std::cout << "Destination::put()\n";
-    }
+// Type of this node.
+enum class NodeType {
+    Source,
+    Destination,
+    Router,
 };
 
 /// A router (or a "switch") node.
-class Router : public Node {
+class Router {
 public:
-    Router(EventQueue &eq, int id, int radix,
+    Router(EventQueue &eq, NodeType type, int id, int radix,
            const std::vector<Topology::RouterPortPair> &dp);
 
     // Router::tick_event captures pointer to 'this', and is initialized in the
@@ -95,8 +78,8 @@ public:
     Router(const Router &) = delete;
     Router(Router &&) = default;
 
-    void tick() override;
-    void put(int port, const Flit &flit) override;
+    void tick();
+    void put(int port, const Flit &flit);
     void route_compute();
     void vc_alloc();
     void switch_alloc();
@@ -147,12 +130,13 @@ private:
     void mark_self_reschedule() { reschedule_next_tick = true; }
 
     EventQueue &eventq;     // reference to the simulator-global event queue
+    NodeType type;
     const Event tick_event; // self-tick event.
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
     bool reschedule_next_tick{false}; // self-tick at next cycle?
     const std::vector<Topology::RouterPortPair>
-        destination_ports; // stores the other end of the output ports
+        output_destinations; // stores the other end of the output ports
 
 public:
     int id; // numerical router ID
