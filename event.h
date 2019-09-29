@@ -4,6 +4,7 @@
 #include <functional>
 #include <queue>
 #include <variant>
+#include <iostream>
 
 struct SrcId {
     int id;
@@ -44,11 +45,12 @@ public:
     void reschedule(long reltime, const Event &e);
 
     bool empty() const { return queue.empty(); }
+    size_t size() const { return queue.size(); }
     const Event &peek() const;
     Event pop();
 
     long curr_time() const { return time_; }
-    void print() const;
+    void print_and_exit();
 
 private:
     using TimeEventPair = std::pair<long, Event>;

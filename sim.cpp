@@ -7,21 +7,24 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     for (int id = 0; id < terminal_count; id++) {
         std::vector<Topology::RouterPortPair> src_port_dests;
         std::vector<Topology::RouterPortPair> dst_port_dests; // empty
-        for (int port = 0; port < radix; port++) {
-            src_port_dests.push_back(topology.find({SrcId{id}, port}));
-        }
+
+        // Terminal nodes only have a single port.  Also, destination nodes
+        // doesn't have output ports!
+        src_port_dests.push_back(topology.find({SrcId{id}, 0}));
+
         src_nodes.emplace_back(eventq, NodeType::Source, id, radix, src_port_dests);
-        // Destination nodes doesn't have output ports!
         dst_nodes.emplace_back(eventq, NodeType::Destination, id, radix, dst_port_dests);
     }
 
-    // Initializes routers
+    // Initialize router nodes
     for (int id = 0; id < router_count; id++) {
-        std::vector<Topology::RouterPortPair> dest_ports;
+        std::vector<Topology::RouterPortPair> port_dests;
+
         for (int port = 0; port < radix; port++) {
-            dest_ports.push_back(topology.find({RtrId{id}, port}));
+            port_dests.push_back(topology.find({RtrId{id}, port}));
         }
-        routers.emplace_back(eventq, NodeType::Router, id, radix, dest_ports);
+
+        routers.emplace_back(eventq, NodeType::Router, id, radix, port_dests);
     }
 }
 

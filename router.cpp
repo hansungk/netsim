@@ -57,6 +57,7 @@ void Router::put(int port, const Flit &flit) {
         iu.state.global = InputUnit::State::GlobalState::Routing;
         iu.stage = PipelineStage::RC;
         eventq.reschedule(1, tick_event);
+        // eventq.print_and_exit();
     }
 
     iu.buf.push_back(flit);
@@ -64,6 +65,8 @@ void Router::put(int port, const Flit &flit) {
 
 void Router::tick() {
     // Make sure this router has not been already ticked in this cycle.
+    // std::cout << "Router " << id << ", curr_time=" << eventq.curr_time()
+    //           << ", last_tick=" << last_tick << std::endl;
     assert(eventq.curr_time() != last_tick);
     reschedule_next_tick = false;
 
@@ -83,6 +86,7 @@ void Router::tick() {
     for (int i = 0; i < get_radix(); i++) {
         if (!input_units[i].buf.empty()) {
             empty = false;
+            break;
         }
     }
     if (!empty) {

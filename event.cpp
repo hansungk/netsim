@@ -2,6 +2,22 @@
 #include <cassert>
 #include <iostream>
 
+std::ostream &operator<<(std::ostream &out, const NodeId &id) {
+    int i;
+    if (std::holds_alternative<SrcId>(id)) {
+        out << "SrcId";
+        i = std::get<SrcId>(id).id;
+    } else if (std::holds_alternative<DstId>(id)) {
+        out << "DstId";
+        i = std::get<DstId>(id).id;
+    } else {
+        out << "RtrId";
+        i = std::get<RtrId>(id).id;
+    }
+    out << "{" << i << "}";
+    return out;
+}
+
 void EventQueue::schedule(long time, const Event &e) {
     TimeEventPair p{time, e};
     queue.push(p);
@@ -25,7 +41,14 @@ Event EventQueue::pop() {
     return e;
 }
 
-void EventQueue::print() const {
+void EventQueue::print_and_exit() {
     std::cout << "Event queue entries:\n";
     std::cout << "size=" << queue.size() << std::endl;
+    while (!queue.empty()) {
+        auto tp = queue.top();
+        std::cout << "[@" << tp.first << ", " << tp.second.id << "]"
+                  << std::endl;
+        queue.pop();
+    }
+    exit(EXIT_SUCCESS);
 }
