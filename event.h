@@ -26,6 +26,10 @@ struct RtrId {
 
 using NodeId = std::variant<SrcId, DstId, RtrId>;
 
+inline bool is_source(NodeId id) { return std::holds_alternative<SrcId>(id); };
+inline bool is_destination(NodeId id) { return std::holds_alternative<DstId>(id); };
+inline bool is_router(NodeId id) { return std::holds_alternative<RtrId>(id); };
+
 class Router;
 
 class Event {

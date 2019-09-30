@@ -24,7 +24,7 @@ int main(void) {
     };
 
     Sim sim{4, 4, 4, top};
-    sim.eventq.schedule(0, Event{RtrId{0}, [](Router &r) {
+    sim.eventq.schedule(0, Event{SrcId{0}, [](Router &r) {
                                      r.put(2, Flit{Flit::Type::Head, 0});
                                  }});
     // sim.eventq.schedule(1, Event{RtrId{0}, [](Router &r) {

@@ -30,9 +30,9 @@ bool Topology::connect(const RouterPortPair input,
     return insert_success;
 }
 
-Router::Router(EventQueue &eq, NodeType t, int id_, int radix,
+Router::Router(EventQueue &eq, NodeId id_, int radix,
                const std::vector<Topology::RouterPortPair> &dp)
-    : eventq(eq), type(t), tick_event(RtrId{id_}, [](Router &r) { r.tick(); }),
+    : eventq(eq), tick_event(id_, [](Router &r) { r.tick(); }),
       output_destinations(dp), id(id_) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
@@ -64,6 +64,11 @@ void Router::put(int port, const Flit &flit) {
 }
 
 void Router::tick() {
+    if (is_source(id)) {
+        std::cout << "Source node!\n";
+        return;
+    }
+
     // Make sure this router has not been already ticked in this cycle.
     // std::cout << "Router " << id << ", curr_time=" << eventq.curr_time()
     //           << ", last_tick=" << last_tick << std::endl;

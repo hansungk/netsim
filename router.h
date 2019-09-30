@@ -59,17 +59,10 @@ public:
     int payload;
 };
 
-// Type of this node.
-enum class NodeType {
-    Source,
-    Destination,
-    Router,
-};
-
 /// A router (or a "switch") node.
 class Router {
 public:
-    Router(EventQueue &eq, NodeType type, int id, int radix,
+    Router(EventQueue &eq, NodeId id, int radix,
            const std::vector<Topology::RouterPortPair> &dp);
 
     // Router::tick_event captures pointer to 'this', and is initialized in the
@@ -130,7 +123,6 @@ private:
     void mark_self_reschedule() { reschedule_next_tick = true; }
 
     EventQueue &eventq;     // reference to the simulator-global event queue
-    NodeType type;
     const Event tick_event; // self-tick event.
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
@@ -139,7 +131,7 @@ private:
         output_destinations; // stores the other end of the output ports
 
 public:
-    int id; // numerical router ID
+    NodeId id; // numerical router ID
     std::vector<InputUnit> input_units;
     std::vector<OutputUnit> output_units;
 };
