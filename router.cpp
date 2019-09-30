@@ -65,7 +65,21 @@ void Router::put(int port, const Flit &flit) {
 
 void Router::tick() {
     if (is_source(id)) {
+        // TODO: check credit
+        Flit flit{Flit::Type::Head, 0};
+
+        assert(get_radix() == 1);
+        auto dst_pair = output_destinations[0];
+        if (dst_pair != Topology::not_connected) {
+            // FIXME: link traversal time fixed to 1
+            eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
+                                           r.put(dst_pair.second, flit);
+                                       }});
+        }
         std::cout << "Source node!\n";
+        return;
+    } else if (is_destination(id)) {
+        std::cout << "Destination node!\n";
         return;
     }
 

@@ -12,8 +12,8 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
         // doesn't have output ports!
         src_port_dests.push_back(topology.find({SrcId{id}, 0}));
 
-        src_nodes.emplace_back(eventq, SrcId{id}, radix, src_port_dests);
-        dst_nodes.emplace_back(eventq, DstId{id}, radix, dst_port_dests);
+        src_nodes.emplace_back(eventq, SrcId{id}, 1, src_port_dests);
+        dst_nodes.emplace_back(eventq, DstId{id}, 1, dst_port_dests);
     }
 
     // Initialize router nodes
