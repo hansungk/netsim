@@ -47,7 +47,7 @@ public:
         Body,
     };
 
-    Flit(Type t, int src, int dst, int p) : type(t), payload(p) {
+    Flit(Type t, int src, int dst, long p) : type(t), payload(p) {
         route_info.src = src;
         route_info.dst = dst;
     }
@@ -57,7 +57,7 @@ public:
         int src;    // source node ID
         int dst{3}; // destination node ID
     } route_info;
-    int payload;
+    long payload;
 };
 
 /// A router (or a "switch") node.
@@ -128,6 +128,7 @@ private:
     const Event tick_event; // self-tick event.
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
+    long flit_payload_counter{0};
     bool reschedule_next_tick{false}; // self-tick at next cycle?
     const std::vector<Topology::RouterPortPair>
         output_destinations; // stores the other end of the output ports

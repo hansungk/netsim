@@ -43,6 +43,7 @@ Router::Router(EventQueue &eq, NodeId id_, int radix,
 std::ostream &Router::dbg() const {
     auto &out = std::cout;
     out << "[@" << std::setw(3) << eventq.curr_time() << "] ";
+    out << "[" << id << "] ";
     return out;
 }
 
@@ -56,6 +57,7 @@ void Router::put(int port, const Flit &flit) {
         // Idle -> RC transition
         iu.state.global = InputUnit::State::GlobalState::Routing;
         iu.stage = PipelineStage::RC;
+        // TODO: check if already scheduled
         eventq.reschedule(1, tick_event);
         // eventq.print_and_exit();
     }
@@ -68,15 +70,16 @@ void Router::put(int port, const Flit &flit) {
 
 void Router::tick() {
     // Make sure this router has not been already ticked in this cycle.
-    // std::cout << "Router " << id << ", curr_time=" << eventq.curr_time()
-    //           << ", last_tick=" << last_tick << std::endl;
+    // dbg() << "curr_time=" << eventq.curr_time() << ", last_tick=" << last_tick
+    //       << std::endl;
     assert(eventq.curr_time() != last_tick);
     reschedule_next_tick = false;
 
     // Different tick actions for different types of node.
     if (is_source(id)) {
         // TODO: check credit
-        Flit flit{Flit::Type::Head, std::get<SrcId>(id).id, 2, 0};
+        Flit flit{Flit::Type::Head, std::get<SrcId>(id).id, 2, flit_payload_counter};
+        flit_payload_counter++;
 
         assert(get_radix() == 1);
         auto dst_pair = output_destinations[0];
@@ -85,12 +88,20 @@ void Router::tick() {
                                            r.put(dst_pair.second, flit);
                                        }});
         }
-        std::cout << "Source node!\n";
+        dbg() << "[" << flit.payload << "] Flit created!\n";
 
         // TODO: for now, infinitely generate flits.
         mark_self_reschedule();
     } else if (is_destination(id)) {
-        std::cout << "Destination node!\n";
+        auto &iu = input_units[0];
+
+        dbg() << "[" << iu.buf.front().payload << "] Flit arrived!\n";
+        iu.buf.pop_front();
+
+        // Self-tick autonomously unless all input ports are empty.
+        if (!iu.buf.empty()) {
+            mark_self_reschedule();
+        }
     } else {
         // Process each pipeline stage.
         // Stages are processed in reverse order to prevent coherence bug.  E.g.,
@@ -107,7 +118,6 @@ void Router::tick() {
         bool empty = true;
         for (int i = 0; i < get_radix(); i++) {
             if (!input_units[i].buf.empty()) {
-                std::cout << "IU size=" << input_units[i].buf.size() << std::endl;
                 empty = false;
                 break;
             }
@@ -139,8 +149,14 @@ void Router::route_compute() {
                   << ")\n";
             assert(!iu.buf.empty());
 
-            // TODO: simple routing: input port == output port
-            iu.state.route = port;
+            // TODO: Simple algorithmic routing: keep rotating clockwise until
+            // destination is met.
+            if (flit.route_info.dst == std::get<RtrId>(id).id) {
+                // Port 0 is always connected to a terminal node
+                iu.state.route = 0;
+            } else {
+                iu.state.route = 2;
+            }
 
             // RC -> VA transition
             iu.state.global = InputUnit::State::GlobalState::VCWait;
@@ -193,7 +209,7 @@ void Router::switch_traverse() {
             // No output speedup: there is no need for an output buffer
             // (Ch17.3).  Flits that exit the switch are directly placed on the
             // channel.
-            auto dst_pair = output_destinations[port];
+            auto dst_pair = output_destinations[iu.state.route];
             if (dst_pair != Topology::not_connected) {
                 // FIXME: link traversal time fixed to 1
                 eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {

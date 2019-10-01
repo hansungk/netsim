@@ -5,16 +5,16 @@
 std::ostream &operator<<(std::ostream &out, const NodeId &id) {
     int i;
     if (std::holds_alternative<SrcId>(id)) {
-        out << "SrcId";
+        out << "Src ";
         i = std::get<SrcId>(id).id;
     } else if (std::holds_alternative<DstId>(id)) {
-        out << "DstId";
+        out << "Dst ";
         i = std::get<DstId>(id).id;
     } else {
-        out << "RtrId";
+        out << "Rtr ";
         i = std::get<RtrId>(id).id;
     }
-    out << "{" << i << "}";
+    out << i;
     return out;
 }
 
