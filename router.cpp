@@ -60,6 +60,9 @@ void Router::put(int port, const Flit &flit) {
         // eventq.print_and_exit();
     }
 
+    // FIXME: Hardcoded buffer size limit
+    assert(iu.buf.size() < 8 && "Input buffer overflow!");
+
     iu.buf.push_back(flit);
 }
 
@@ -70,47 +73,48 @@ void Router::tick() {
     assert(eventq.curr_time() != last_tick);
     reschedule_next_tick = false;
 
-    // Different tick actions for terminal nodes.
+    // Different tick actions for different types of node.
     if (is_source(id)) {
         // TODO: check credit
-        Flit flit{Flit::Type::Head, 0};
+        Flit flit{Flit::Type::Head, std::get<SrcId>(id).id, 2, 0};
 
         assert(get_radix() == 1);
         auto dst_pair = output_destinations[0];
         if (dst_pair != Topology::not_connected) {
-            // FIXME: link traversal time fixed to 1
             eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
                                            r.put(dst_pair.second, flit);
                                        }});
         }
         std::cout << "Source node!\n";
-        return;
+
+        // TODO: for now, infinitely generate flits.
+        mark_self_reschedule();
     } else if (is_destination(id)) {
         std::cout << "Destination node!\n";
-        return;
-    }
+    } else {
+        // Process each pipeline stage.
+        // Stages are processed in reverse order to prevent coherence bug.  E.g.,
+        // if a flit succeeds in route_compute() and advances to the VA stage, and
+        // then vc_alloc() is called, it would then get processed again in the same
+        // cycle.
+        switch_traverse();
+        switch_alloc();
+        vc_alloc();
+        route_compute();
 
-    // Process each pipeline stage.
-    // Stages are processed in reverse order to prevent coherence bug.  E.g.,
-    // if a flit succeeds in route_compute() and advances to the VA stage, and
-    // then vc_alloc() is called, it would then get processed again in the same
-    // cycle.
-    switch_traverse();
-    switch_alloc();
-    vc_alloc();
-    route_compute();
-
-    // Self-tick autonomously unless all input ports are empty.
-    // FIXME: accuracy?
-    bool empty = true;
-    for (int i = 0; i < get_radix(); i++) {
-        if (!input_units[i].buf.empty()) {
-            empty = false;
-            break;
+        // Self-tick autonomously unless all input ports are empty.
+        // FIXME: accuracy?
+        bool empty = true;
+        for (int i = 0; i < get_radix(); i++) {
+            if (!input_units[i].buf.empty()) {
+                std::cout << "IU size=" << input_units[i].buf.size() << std::endl;
+                empty = false;
+                break;
+            }
         }
-    }
-    if (!empty) {
-        mark_self_reschedule();
+        if (!empty) {
+            mark_self_reschedule();
+        }
     }
 
     // Do the rescheduling at here once to prevent flooding the event queue.

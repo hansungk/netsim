@@ -47,15 +47,16 @@ public:
         Body,
     };
 
-    struct RouteInfo {
-        int src; // source node ID
-        int dst; // destination node ID
-    };
-
-    Flit(Type t, int p) : type(t), payload(p) {}
+    Flit(Type t, int src, int dst, int p) : type(t), payload(p) {
+        route_info.src = src;
+        route_info.dst = dst;
+    }
 
     Type type;
-    RouteInfo route_info;
+    struct RouteInfo {
+        int src;    // source node ID
+        int dst{3}; // destination node ID
+    } route_info;
     int payload;
 };
 
