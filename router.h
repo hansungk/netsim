@@ -72,6 +72,7 @@ public:
     Router(Router &&) = default;
 
     void tick();
+    const Event &get_tick_event() const { return tick_event; }
     void put(int port, const Flit &flit);
     void route_compute();
     void vc_alloc();

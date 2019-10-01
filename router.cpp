@@ -64,6 +64,13 @@ void Router::put(int port, const Flit &flit) {
 }
 
 void Router::tick() {
+    // Make sure this router has not been already ticked in this cycle.
+    // std::cout << "Router " << id << ", curr_time=" << eventq.curr_time()
+    //           << ", last_tick=" << last_tick << std::endl;
+    assert(eventq.curr_time() != last_tick);
+    reschedule_next_tick = false;
+
+    // Different tick actions for terminal nodes.
     if (is_source(id)) {
         // TODO: check credit
         Flit flit{Flit::Type::Head, 0};
@@ -82,12 +89,6 @@ void Router::tick() {
         std::cout << "Destination node!\n";
         return;
     }
-
-    // Make sure this router has not been already ticked in this cycle.
-    // std::cout << "Router " << id << ", curr_time=" << eventq.curr_time()
-    //           << ", last_tick=" << last_tick << std::endl;
-    assert(eventq.curr_time() != last_tick);
-    reschedule_next_tick = false;
 
     // Process each pipeline stage.
     // Stages are processed in reverse order to prevent coherence bug.  E.g.,
