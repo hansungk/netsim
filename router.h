@@ -128,6 +128,7 @@ private:
     const Event tick_event; // self-tick event.
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
+    long last_reschedule_tick{-1};
     long flit_payload_counter{0};
     bool reschedule_next_tick{false}; // self-tick at next cycle?
     const std::vector<Topology::RouterPortPair>

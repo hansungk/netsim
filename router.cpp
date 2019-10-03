@@ -58,8 +58,12 @@ void Router::put(int port, const Flit &flit) {
         iu.state.global = InputUnit::State::GlobalState::Routing;
         iu.stage = PipelineStage::RC;
         // TODO: check if already scheduled
-        eventq.reschedule(1, tick_event);
-        // eventq.print_and_exit();
+        if (eventq.curr_time() != last_reschedule_tick) {
+            eventq.reschedule(1, tick_event);
+            dbg() << "scheduled tick to " << eventq.curr_time() + 1
+                  << std::endl;
+            last_reschedule_tick = eventq.curr_time();
+        }
     }
 
     // FIXME: Hardcoded buffer size limit
@@ -70,15 +74,16 @@ void Router::put(int port, const Flit &flit) {
 
 void Router::tick() {
     // Make sure this router has not been already ticked in this cycle.
-    // dbg() << "curr_time=" << eventq.curr_time() << ", last_tick=" << last_tick
-    //       << std::endl;
+    dbg() << "Tick! curr_time=" << eventq.curr_time()
+          << ", last_tick=" << last_tick << std::endl;
     assert(eventq.curr_time() != last_tick);
     reschedule_next_tick = false;
 
     // Different tick actions for different types of node.
     if (is_source(id)) {
-        // TODO: check credit
-        Flit flit{Flit::Type::Head, std::get<SrcId>(id).id, 2, flit_payload_counter};
+        // TODO: All flits go to node #2!
+        Flit flit{Flit::Type::Head, std::get<SrcId>(id).id, 2,
+                  flit_payload_counter};
         flit_payload_counter++;
 
         assert(get_radix() == 1);
@@ -128,8 +133,11 @@ void Router::tick() {
     }
 
     // Do the rescheduling at here once to prevent flooding the event queue.
-    if (reschedule_next_tick) {
+    if (reschedule_next_tick && eventq.curr_time() != last_reschedule_tick) {
         eventq.reschedule(1, tick_event);
+        dbg() << "self-rescheduled to " << eventq.curr_time() + 1 << std::endl;
+        // XXX: Hacky!
+        last_reschedule_tick = eventq.curr_time();
     }
 
     last_tick = eventq.curr_time();
