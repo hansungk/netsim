@@ -5,6 +5,7 @@
 #include <deque>
 #include <iostream>
 #include <map>
+#include <optional>
 
 // Encodes router topology in a bidirectional map.
 // Supports runtime checking for connectivity error.
@@ -100,6 +101,8 @@ public:
 
     void put(int port, const Flit flit);
     void put_credit(int port, const Credit credit);
+    void source_generate();
+    void credit_update();
     void route_compute();
     void vc_alloc();
     void switch_alloc();
@@ -117,11 +120,10 @@ public:
                 VCWait,
                 Active,
                 CreditWait,
-            } global;
-            int route;
-            int output_vc;
+            } global{GlobalState::Idle};
+            int route_port{-1};
+            int output_vc{0};
             int pointer;
-            int credit_count;
         } state;
         PipelineStage stage{PipelineStage::Idle};
         std::deque<Flit> buf;
@@ -129,11 +131,17 @@ public:
 
     struct OutputUnit {
         struct State {
-            int global;
-            int input_vc;
-            int credit_count;
+            enum class GlobalState {
+                Idle,
+                Active,
+                CreditWait,
+            } global{GlobalState::Idle};
+            int input_port;
+            int input_vc{0};
+            int credit_count{4}; // FIXME: hardcoded
         } state;
-        std::deque<Flit> buf;
+        // std::deque<Flit> buf;
+        std::optional<Credit> buf_credit;
     };
 
 private:
