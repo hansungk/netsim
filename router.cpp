@@ -33,8 +33,8 @@ bool Topology::connect(const RouterPortPair input,
 Router::Router(EventQueue &eq, NodeId id_, int radix,
                const std::vector<Topology::RouterPortPair> &in_origs,
                const std::vector<Topology::RouterPortPair> &out_dsts)
-    : eventq(eq), tick_event(id_, [](Router &r) { r.tick(); }),
-      input_origins(in_origs), output_destinations(out_dsts), id(id_) {
+    : id(id_), eventq(eq), tick_event(id_, [](Router &r) { r.tick(); }),
+      input_origins(in_origs), output_destinations(out_dsts) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
         output_units.emplace_back();
@@ -151,7 +151,7 @@ void Router::tick() {
         }
     } else {
         // Process each pipeline stage.
-        // Stages are processed in reverse order of dependency to prevent
+        // Stages are processed in reverse dependency order to prevent
         // coherence bug.  E.g., if a flit succeeds in route_compute() and
         // advances to the VA stage, and then vc_alloc() is called, it would
         // then get processed again in the same cycle.
