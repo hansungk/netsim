@@ -18,24 +18,33 @@ public:
     Topology() = default;
     Topology(std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);
 
-    RouterPortPair find(RouterPortPair input) {
-        auto it = in_out_map.find(input);
-        if (it == in_out_map.end()) {
+    RouterPortPair find_forward(RouterPortPair out_port) {
+        auto it = forward_map.find(out_port);
+        if (it == forward_map.end()) {
             return not_connected;
         } else {
             return it->second;
         }
     }
 
-    bool connect(const RouterPortPair input, const RouterPortPair output);
+    RouterPortPair find_reverse(RouterPortPair in_port) {
+        auto it = reverse_map.find(in_port);
+        if (it == reverse_map.end()) {
+            return not_connected;
+        } else {
+            return it->second;
+        }
+    }
+
+    bool connect(const RouterPortPair src, const RouterPortPair dst);
 
     // Helper functions to get ID of terminal nodes.
     static unsigned int src(unsigned int id) { return -id - 1; }
     static unsigned int dst(unsigned int id) { return -id - 1; }
 
 private:
-    std::map<RouterPortPair, RouterPortPair> in_out_map;
-    std::map<RouterPortPair, RouterPortPair> out_in_map;
+    std::map<RouterPortPair, RouterPortPair> forward_map;
+    std::map<RouterPortPair, RouterPortPair> reverse_map;
 };
 
 // Flit encoding.
@@ -60,28 +69,27 @@ public:
     long payload;
 };
 
+class Credit {
+public:
+    // VC is omitted, as we only have one VC per a physical channel.
+};
+
 /// A router (or a "switch") node.
 class Router {
 public:
     Router(EventQueue &eq, NodeId id, int radix,
-           const std::vector<Topology::RouterPortPair> &dp);
-
-    // Router::tick_event captures pointer to 'this', and is initialized in the
-    // Router's constructor. Therefore, we should disallow moving/copying of
-    // Router to prevent the mutation of 'this'.
+           const std::vector<Topology::RouterPortPair> &in_origs,
+           const std::vector<Topology::RouterPortPair> &out_dsts);
+    // Router::tick_event captures pointer to 'this' in the Router's
+    // constructor. To prevent invalidating the 'this' pointer, we should
+    // disallow moving/copying of Router.
     Router(const Router &) = delete;
     Router(Router &&) = default;
 
+    // Tick event
     void tick();
-    const Event &get_tick_event() const { return tick_event; }
-    void put(int port, const Flit &flit);
-    void route_compute();
-    void vc_alloc();
-    void switch_alloc();
-    void switch_traverse();
 
-    int get_radix() const { return input_units.size(); }
-
+    // Pipeline stages
     enum class PipelineStage {
         Idle,
         RC,
@@ -89,6 +97,17 @@ public:
         SA,
         ST,
     };
+
+    void put(int port, const Flit flit);
+    void put_credit(int port, const Credit credit);
+    void route_compute();
+    void vc_alloc();
+    void switch_alloc();
+    void switch_traverse();
+
+    // Misc
+    const Event &get_tick_event() const { return tick_event; }
+    int get_radix() const { return input_units.size(); }
 
     struct InputUnit {
         struct State {
@@ -128,9 +147,13 @@ private:
     const Event tick_event; // self-tick event.
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
-    long last_reschedule_tick{-1};
-    long flit_payload_counter{0};
-    bool reschedule_next_tick{false}; // self-tick at next cycle?
+    long last_reschedule_tick{-1}; // XXX: hacky?
+    long flit_payload_counter{0};  // for simple payload generation
+    bool reschedule_next_tick{
+        false}; // marks whether to self-tick at the next cycle
+    const std::vector<Topology::RouterPortPair>
+        input_origins; // stores the other end of the input ports. Used for the
+                       // returning of credits.
     const std::vector<Topology::RouterPortPair>
         output_destinations; // stores the other end of the output ports
 

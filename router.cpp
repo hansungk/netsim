@@ -22,8 +22,8 @@ Topology Topology::ring() {
 
 bool Topology::connect(const RouterPortPair input,
                        const RouterPortPair output) {
-    auto insert_success = in_out_map.insert({input, output}).second;
-    if (!out_in_map.insert({output, input}).second) {
+    auto insert_success = forward_map.insert({input, output}).second;
+    if (!reverse_map.insert({output, input}).second) {
         // Bad connectivity: destination port is already connected
         return false;
     }
@@ -31,9 +31,10 @@ bool Topology::connect(const RouterPortPair input,
 }
 
 Router::Router(EventQueue &eq, NodeId id_, int radix,
-               const std::vector<Topology::RouterPortPair> &dp)
+               const std::vector<Topology::RouterPortPair> &in_origs,
+               const std::vector<Topology::RouterPortPair> &out_dsts)
     : eventq(eq), tick_event(id_, [](Router &r) { r.tick(); }),
-      output_destinations(dp), id(id_) {
+      input_origins(in_origs), output_destinations(out_dsts), id(id_) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
         output_units.emplace_back();
@@ -47,7 +48,7 @@ std::ostream &Router::dbg() const {
     return out;
 }
 
-void Router::put(int port, const Flit &flit) {
+void Router::put(int port, const Flit flit) {
     assert(port < get_radix() && "no such port!");
     dbg() << "[" << flit.payload << "] Put!\n";
     auto &iu = input_units[port];
@@ -72,11 +73,26 @@ void Router::put(int port, const Flit &flit) {
     iu.buf.push_back(flit);
 }
 
+void Router::put_credit(int port, const Credit credit) {
+    assert(port < get_radix() && "no such port!");
+    dbg() << "Put_credit!\n";
+
+    if (eventq.curr_time() != last_reschedule_tick) {
+        eventq.reschedule(1, tick_event);
+        dbg() << "scheduled tick to " << eventq.curr_time() + 1 << std::endl;
+        last_reschedule_tick = eventq.curr_time();
+    }
+}
+
 void Router::tick() {
     // Make sure this router has not been already ticked in this cycle.
-    dbg() << "Tick! curr_time=" << eventq.curr_time()
-          << ", last_tick=" << last_tick << std::endl;
-    assert(eventq.curr_time() != last_tick);
+    if (eventq.curr_time() == last_tick) {
+        dbg() << "WARN: double tick! curr_time=" << eventq.curr_time()
+              << ", last_tick=" << last_tick << std::endl;
+        return;
+    }
+    // assert(eventq.curr_time() != last_tick);
+
     reschedule_next_tick = false;
 
     // Different tick actions for different types of node.
@@ -196,9 +212,21 @@ void Router::switch_alloc() {
             dbg() << "[" << iu.buf.front().payload << "] switch allocation\n";
             assert(!iu.buf.empty());
 
+            // TODO: SA always succeeds as of now.
+
             // SA -> ST transition
             iu.state.global = InputUnit::State::GlobalState::Active;
             iu.stage = PipelineStage::ST;
+
+            // CT stage: return credit to the upstream node.
+            auto src_pair = input_origins[port];
+            if (src_pair != Topology::not_connected) {
+                // FIXME: link traversal time fixed to 1
+                eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
+                                               r.put_credit(src_pair.second, Credit{});
+                                           }});
+            }
+
             mark_self_reschedule();
         }
     }
