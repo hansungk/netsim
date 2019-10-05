@@ -30,6 +30,11 @@ bool Topology::connect(const RouterPortPair input,
     return insert_success;
 }
 
+std::ostream &operator<<(std::ostream &out, const Flit &flit) {
+    out << "{" << flit.route_info.src << "." << flit.payload << "}";
+    return out;
+}
+
 Router::Router(EventQueue &eq, NodeId id_, int radix,
                const std::vector<Topology::RouterPortPair> &in_origs,
                const std::vector<Topology::RouterPortPair> &out_dsts)
@@ -38,6 +43,13 @@ Router::Router(EventQueue &eq, NodeId id_, int radix,
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
         output_units.emplace_back();
+    }
+
+    if (is_source(id) || is_destination(id)) {
+        assert(input_units.size() == 1);
+        assert(output_units.size() == 1);
+        input_units[0].state.route_port = 0;
+        output_units[0].state.input_port = 0;
     }
 }
 
@@ -50,27 +62,34 @@ std::ostream &Router::dbg() const {
 
 void Router::put(int port, const Flit flit) {
     assert(port < get_radix() && "no such port!");
-    dbg() << "[" << flit.payload << "] Put!\n";
     auto &iu = input_units[port];
 
-    // If the buffer was empty, set stage to RC, and kickstart the pipeline
+    // If the buffer was empty, this is the only place to kickstart the
+    // pipeline.
     if (iu.buf.empty()) {
-        // Idle -> RC transition
-        iu.state.global = InputUnit::State::GlobalState::Routing;
-        iu.stage = PipelineStage::RC;
-        // TODO: check if already scheduled
+        // If the input unit state was also idle (empty != idle!), set
+        // the stage to RC.
+        if (iu.stage == PipelineStage::Idle) {
+            assert(iu.state.global == InputUnit::State::GlobalState::Idle);
+
+            // Idle -> RC transition
+            iu.state.global = InputUnit::State::GlobalState::Routing;
+            iu.stage = PipelineStage::RC;
+        }
+
         if (eventq.curr_time() != last_reschedule_tick) {
             eventq.reschedule(1, tick_event);
-            dbg() << "scheduled tick to " << eventq.curr_time() + 1
-                  << std::endl;
+            // dbg() << "scheduled tick to " << eventq.curr_time() + 1
+            //       << std::endl;
             last_reschedule_tick = eventq.curr_time();
         }
     }
 
     // FIXME: Hardcoded buffer size limit
-    assert(iu.buf.size() < 8 && "Input buffer overflow!");
-
+    assert(iu.buf.size() < 4 && "Input buffer overflow!");
     iu.buf.push_back(flit);
+
+    dbg() << flit << " Put! buf.size()=" << iu.buf.size() << "\n";
 }
 
 void Router::put_credit(int port, const Credit credit) {
@@ -79,7 +98,7 @@ void Router::put_credit(int port, const Credit credit) {
 
     if (eventq.curr_time() != last_reschedule_tick) {
         eventq.reschedule(1, tick_event);
-        dbg() << "scheduled tick to " << eventq.curr_time() + 1 << std::endl;
+        // dbg() << "scheduled tick to " << eventq.curr_time() + 1 << std::endl;
         last_reschedule_tick = eventq.curr_time();
     }
 
@@ -106,7 +125,10 @@ void Router::source_generate() {
         ou.state.credit_count--;
         assert(ou.state.credit_count >= 0);
 
-        dbg() << "[" << flit.payload << "] Flit created!\n";
+        dbg() << flit << " Flit created and sent!\n";
+
+        // TODO: for now, infinitely generate flits.
+        mark_self_reschedule();
     } else {
         dbg() << "Credit stall!\n";
     }
@@ -129,14 +151,11 @@ void Router::tick() {
         // Source nodes also needs to manage credit in order to send flits at
         // the right time.
         credit_update();
-
-        // TODO: for now, infinitely generate flits.
-        mark_self_reschedule();
     } else if (is_destination(id)) {
         auto &iu = input_units[0];
 
         if (!iu.buf.empty()) {
-            dbg() << "[" << iu.buf.front().payload << "] Flit arrived!\n";
+            dbg() << iu.buf.front() << " Flit arrived!\n";
             iu.buf.pop_front();
 
             auto src_pair = input_origins[0];
@@ -198,6 +217,28 @@ void Router::credit_update() {
                   << ou.state.credit_count + 1 << "\n";
             ou.state.credit_count++;
             ou.buf_credit = std::nullopt;
+
+            // Upon credit update, the input and output unit receiving this
+            // credit may or may not be in the CreditWait state.  If they are,
+            // make sure to switch them back to the active state so that they
+            // can proceed in the SA stage.
+            //
+            // This can otherwise be implemented in the SA stage itself,
+            // switching the stage to Active and simultaneously commencing to
+            // the switch allocation.  However, the CreditWait stage doesn't
+            // seem to serve much purpose in that case.  This implementation is
+            // what I think of as a more reasonable one.
+            assert(ou.state.input_port != -1); // XXX: redundant?
+            auto &iu = input_units[ou.state.input_port];
+            if (iu.state.global == InputUnit::State::GlobalState::CreditWait) {
+                assert(ou.state.global == OutputUnit::State::GlobalState::CreditWait);
+                iu.state.global = InputUnit::State::GlobalState::Active;
+                ou.state.global = OutputUnit::State::GlobalState::Active;
+                mark_self_reschedule();
+                dbg() << "credit update with kickstart!\n";
+            } else {
+                dbg() << "credit update, but no kickstart\n";
+            }
         }
     }
 }
@@ -208,9 +249,7 @@ void Router::route_compute() {
 
         if (iu.stage == PipelineStage::RC) {
             auto flit = iu.buf.front();
-            dbg() << "[" << flit.payload
-                  << "] route computation (dst:" << flit.route_info.dst
-                  << ")\n";
+            dbg() << flit << " route computation\n";
             assert(!iu.buf.empty());
 
             // TODO: Simple algorithmic routing: keep rotating clockwise until
@@ -221,8 +260,8 @@ void Router::route_compute() {
             } else {
                 iu.state.route_port = 2;
             }
-            auto &ou = output_units[iu.state.route_port];
-            ou.state.input_port = port;
+
+            dbg() << flit << " RC success (port=" << iu.state.route_port << ")\n";
 
             // RC -> VA transition
             iu.state.global = InputUnit::State::GlobalState::VCWait;
@@ -233,30 +272,33 @@ void Router::route_compute() {
 }
 
 void Router::vc_alloc() {
+    // TODO: Fixed priority: as of now, port 0 always wins the competition if
+    // it wishes to.
     for (int port = 0; port < get_radix(); port++) {
         auto &iu = input_units[port];
         auto &ou = output_units[iu.state.route_port];
 
         if (iu.stage == PipelineStage::VA) {
             if (iu.state.global == InputUnit::State::GlobalState::VCWait) {
-                dbg() << "[" << iu.buf.front().payload << "] VC allocation\n";
+                dbg() << iu.buf.front() << " VC allocation\n";
                 assert(!iu.buf.empty());
 
-                // TODO: VA always succeeds as of now.
-                iu.state.global = InputUnit::State::GlobalState::Active;
-                ou.state.global = OutputUnit::State::GlobalState::Active;
-            }
+                // Check if output VC is already in use by another packet.
+                if (ou.state.global == OutputUnit::State::GlobalState::Idle) {
+                    dbg() << iu.buf.front() << " VA success\n";
 
-            // VA -> SA transition
-            // Only the VCs with available credits can proceed to the SA stage.
-            if (ou.state.credit_count > 0) {
-                iu.stage = PipelineStage::SA;
-                mark_self_reschedule();
-            } else {
-                dbg() << "Credit stall! credit=" << ou.state.credit_count << "\n";
+                    // Gates open!
+                    iu.state.global = InputUnit::State::GlobalState::Active;
+                    ou.state.global = OutputUnit::State::GlobalState::Active;
 
-                iu.state.global = InputUnit::State::GlobalState::CreditWait;
-                ou.state.global = OutputUnit::State::GlobalState::CreditWait;
+                    // Record the input port to the Output unit now.
+                    ou.state.input_port = port;
+
+                    iu.stage = PipelineStage::SA;
+                    mark_self_reschedule();
+                } else {
+                    dbg() << iu.buf.front() << " VA failure\n";
+                }
             }
         }
     }
@@ -268,31 +310,55 @@ void Router::switch_alloc() {
         auto &ou = output_units[iu.state.route_port];
 
         if (iu.stage == PipelineStage::SA) {
-            dbg() << "[" << iu.buf.front().payload << "] switch allocation\n";
-            assert(!iu.buf.empty());
+            if (iu.state.global == InputUnit::State::GlobalState::Active) {
+                // Input units in the active state *may* be empty, e.g. if
+                // their body flits have not arrived.  Check that.
+                if (iu.buf.empty()) {
+                    continue;
+                }
 
-            // TODO: SA always succeeds as of now.
+                dbg() << iu.buf.front() << " switch allocation\n";
 
-            // SA -> ST transition
-            iu.state.global = InputUnit::State::GlobalState::Active;
-            iu.stage = PipelineStage::ST;
+                // Check credit first; if no credit available, switch to
+                // CreditWait state and do not attempt allocation at all.
+                if (ou.state.credit_count <= 0) {
+                    dbg() << "Credit stall! credit=" << ou.state.credit_count
+                          << "\n";
+                    iu.state.global = InputUnit::State::GlobalState::CreditWait;
+                    ou.state.global =
+                        OutputUnit::State::GlobalState::CreditWait;
+                    // From now on, SA will not be attempted on this flit
+                    // unless the CU stage bumps the state to Active.
+                } else {
+                    assert(ou.state.global ==
+                           OutputUnit::State::GlobalState::Active);
+                    assert(!iu.buf.empty());
 
-            // CT stage: return credit to the upstream node.
-            auto src_pair = input_origins[port];
-            assert(src_pair != Topology::not_connected);
-            // FIXME: link traversal time fixed to 1
-            dbg() << "Credit sent to {" << src_pair.first << ", "
-                  << src_pair.second << "}\n";
-            eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
-                                           r.put_credit(src_pair.second,
-                                                        Credit{});
-                                       }});
-            dbg() << "Credit decrement, credit=" << ou.state.credit_count
-                  << "->" << ou.state.credit_count - 1 << ";\n";
-            ou.state.credit_count--;
-            assert(ou.state.credit_count >= 0);
+                    // TODO: SA always succeeds as of now.
 
-            mark_self_reschedule();
+                    // SA -> ST transition
+                    iu.state.global = InputUnit::State::GlobalState::Active;
+                    iu.stage = PipelineStage::ST;
+
+                    // CT stage: return credit to the upstream node.
+                    auto src_pair = input_origins[port];
+                    assert(src_pair != Topology::not_connected);
+                    // FIXME: link traversal time fixed to 1
+                    dbg() << "Credit sent to {" << src_pair.first << ", "
+                          << src_pair.second << "}\n";
+                    eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
+                                                   r.put_credit(src_pair.second,
+                                                                Credit{});
+                                               }});
+                    dbg() << "Credit decrement, credit="
+                          << ou.state.credit_count << "->"
+                          << ou.state.credit_count - 1 << ";\n";
+                    ou.state.credit_count--;
+                    assert(ou.state.credit_count >= 0);
+
+                    mark_self_reschedule();
+                }
+            }
         }
     }
 }
@@ -300,8 +366,9 @@ void Router::switch_alloc() {
 void Router::switch_traverse() {
     for (int port = 0; port < get_radix(); port++) {
         auto &iu = input_units[port];
+
         if (iu.stage == PipelineStage::ST) {
-            dbg() << "[" << iu.buf.front().payload << "] switch traverse\n";
+            dbg() << iu.buf.front() << " switch traverse\n";
             assert(!iu.buf.empty());
 
             Flit flit = iu.buf.front();
@@ -313,7 +380,7 @@ void Router::switch_traverse() {
             auto dst_pair = output_destinations[iu.state.route_port];
             assert(dst_pair != Topology::not_connected);
             // FIXME: link traversal time fixed to 1
-            dbg() << "Flit sent to {" << dst_pair.first << ", "
+            dbg() << "Flit " << flit << " sent to {" << dst_pair.first << ", "
                   << dst_pair.second << "}\n";
             eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
                                            r.put(dst_pair.second, flit);
@@ -327,13 +394,9 @@ void Router::switch_traverse() {
             // TODO: if tail flit, switch global state to idle.
             iu.state.global = InputUnit::State::GlobalState::Active;
 
-            if (iu.buf.empty()) {
-                iu.stage = PipelineStage::Idle;
-            } else {
-                // FIXME: what if the next flit is a head flit?
-                iu.stage = PipelineStage::SA;
-                mark_self_reschedule();
-            }
+            // FIXME: check if tail flit and if so, switch back to Idle
+            iu.stage = PipelineStage::SA;
+            mark_self_reschedule();
         }
     }
 }

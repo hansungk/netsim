@@ -70,6 +70,8 @@ public:
     long payload;
 };
 
+std::ostream &operator<<(std::ostream &out, const Flit &flit);
+
 class Credit {
 public:
     // VC is omitted, as we only have one VC per a physical channel.
@@ -140,7 +142,7 @@ public:
                 Active,
                 CreditWait,
             } global{GlobalState::Idle};
-            int input_port;
+            int input_port{-1};
             int input_vc{0};
             int credit_count{4}; // FIXME: hardcoded
         } state;
