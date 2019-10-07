@@ -14,7 +14,7 @@ public:
     using RouterPortPair = std::pair<NodeId, int /*port*/>;
     static constexpr RouterPortPair not_connected{RtrId{-1}, -1};
 
-    static Topology ring();
+    static Topology ring(int n);
 
     Topology() = default;
     Topology(std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);

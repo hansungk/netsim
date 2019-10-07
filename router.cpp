@@ -14,9 +14,29 @@ Topology::Topology(
     }
 }
 
-Topology Topology::ring() {
+Topology Topology::ring(int n) {
     Topology top;
-    // TODO
+
+    // Port usage: 0:terminal, 1:left, 2:right
+    // Inter-router channels
+    for (int i = 0; i < n; i++) {
+        int l = i;
+        int r = (i + 1) % n;
+        RouterPortPair lport{RtrId{l}, 2};
+        RouterPortPair rport{RtrId{r}, 1};
+        top.connect(lport, rport);
+        top.connect(rport, lport);
+    }
+
+    // Terminal node channels
+    for (int i = 0; i < n; i++) {
+        RouterPortPair src_port{SrcId{i}, 0};
+        RouterPortPair dst_port{DstId{i}, 0};
+        RouterPortPair rtr_port{RtrId{i}, 0};
+        top.connect(src_port, rtr_port);
+        top.connect(rtr_port, dst_port);
+    }
+
     return top;
 }
 
@@ -347,8 +367,10 @@ void Router::switch_alloc() {
                     // SA -> ST transition
                     iu.state.global = InputUnit::State::GlobalState::Active;
                     iu.stage = PipelineStage::ST;
+                    mark_self_reschedule();
 
                     // CT stage: return credit to the upstream node.
+                    // FIXME: shouldn't this have timing difference with SA?
                     auto src_pair = input_origins[port];
                     assert(src_pair != Topology::not_connected);
                     // FIXME: link traversal time fixed to 1
@@ -363,8 +385,6 @@ void Router::switch_alloc() {
                           << ou.state.credit_count - 1 << ";\n";
                     ou.state.credit_count--;
                     assert(ou.state.credit_count >= 0);
-
-                    mark_self_reschedule();
                 }
             }
         }
