@@ -105,11 +105,15 @@ public:
     void put(int port, const Flit flit);
     void put_credit(int port, const Credit credit);
     void source_generate();
+    void destination_consume();
     void credit_update();
     void route_compute();
     void vc_alloc();
     void switch_alloc();
     void switch_traverse();
+
+    // Allocators and arbiters
+    int vc_arbit_round_robin(int out_port);
 
     // Misc
     const Event &get_tick_event() const { return tick_event; }
@@ -136,6 +140,8 @@ public:
     };
 
     struct OutputUnit {
+        OutputUnit(long bufsize) { state.credit_count = bufsize; }
+
         struct State {
             enum class GlobalState {
                 Idle,
@@ -144,7 +150,7 @@ public:
             } global{GlobalState::Idle};
             int input_port{-1};
             int input_vc{0};
-            int credit_count{4}; // FIXME: hardcoded
+            int credit_count; // FIXME: hardcoded
         } state;
         // std::deque<Flit> buf;
         std::optional<Credit> buf_credit;
@@ -162,6 +168,7 @@ private:
 private:
     EventQueue &eventq;     // reference to the simulator-global event queue
     const Event tick_event; // self-tick event.
+    const size_t input_buf_size{10};
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
     long last_reschedule_tick{-1}; // XXX: hacky?
@@ -175,6 +182,9 @@ private:
         output_destinations; // stores the other end of the output ports
     std::vector<InputUnit> input_units;
     std::vector<OutputUnit> output_units;
+
+    // Allocator
+    int last_grant_input{0}; // Round-robin allocator
 };
 
 #endif

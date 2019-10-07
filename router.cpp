@@ -24,6 +24,7 @@ Topology Topology::ring(int n) {
         int r = (i + 1) % n;
         RouterPortPair lport{RtrId{l}, 2};
         RouterPortPair rport{RtrId{r}, 1};
+        // Bidirectional channel
         top.connect(lport, rport);
         top.connect(rport, lport);
     }
@@ -62,7 +63,7 @@ Router::Router(EventQueue &eq, NodeId id_, int radix,
       input_origins(in_origs), output_destinations(out_dsts) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
-        output_units.emplace_back();
+        output_units.emplace_back(input_buf_size);
     }
 
     if (is_source(id) || is_destination(id)) {
@@ -106,7 +107,7 @@ void Router::put(int port, const Flit flit) {
     }
 
     // FIXME: Hardcoded buffer size limit
-    assert(iu.buf.size() < 4 && "Input buffer overflow!");
+    assert(iu.buf.size() < input_buf_size && "Input buffer overflow!");
     iu.buf.push_back(flit);
 
     dbg() << flit << " Put! buf.size()=" << iu.buf.size() << "\n";
@@ -154,6 +155,26 @@ void Router::source_generate() {
     }
 }
 
+void Router::destination_consume() {
+    auto &iu = input_units[0];
+
+    if (!iu.buf.empty()) {
+        dbg() << "Destination buf size=" << iu.buf.size() << std::endl;
+        dbg() << iu.buf.front() << " Flit arrived!\n";
+        iu.buf.pop_front();
+        // assert(iu.buf.empty());
+
+        auto src_pair = input_origins[0];
+        assert(src_pair != Topology::not_connected);
+        eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
+                                       r.put_credit(src_pair.second, Credit{});
+                                   }});
+
+        // Self-tick autonomously unless all input ports are empty.
+        mark_self_reschedule();
+    }
+}
+
 void Router::tick() {
     // Make sure this router has not been already ticked in this cycle.
     if (eventq.curr_time() == last_tick) {
@@ -172,22 +193,7 @@ void Router::tick() {
         // the right time.
         credit_update();
     } else if (is_destination(id)) {
-        auto &iu = input_units[0];
-
-        if (!iu.buf.empty()) {
-            dbg() << iu.buf.front() << " Flit arrived!\n";
-            iu.buf.pop_front();
-
-            auto src_pair = input_origins[0];
-            assert(src_pair != Topology::not_connected);
-            eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
-                                           r.put_credit(src_pair.second,
-                                                        Credit{});
-                                       }});
-
-            // Self-tick autonomously unless all input ports are empty.
-            mark_self_reschedule();
-        }
+        destination_consume();
     } else {
         // Process each pipeline stage.
         // Stages are processed in reverse dependency order to prevent
@@ -299,34 +305,54 @@ void Router::route_compute() {
     }
 }
 
+// This function expects the given output VC to be in the Idle state.
+int Router::vc_arbit_round_robin(int out_port) {
+    int iport = last_grant_input;
+
+    for (int i = 0; i < get_radix(); i++) {
+        auto &iu = input_units[iport];
+
+        if (iu.stage == PipelineStage::VA && iu.state.route_port == out_port) {
+            // XXX: is VA stage and VCWait state the same?
+            assert(iu.state.global == InputUnit::State::GlobalState::VCWait);
+            last_grant_input = iport;
+            return iport;
+        }
+
+        iport = (iport + 1) % get_radix();
+    }
+
+    // Indicates that there was no request for this VC.
+    return -1;
+}
+
 void Router::vc_alloc() {
-    // TODO: Fixed priority: as of now, port 0 always wins the competition if
-    // it wishes to.
-    for (int port = 0; port < get_radix(); port++) {
-        auto &iu = input_units[port];
-        auto &ou = output_units[iu.state.route_port];
+    dbg() << "VC allocation\n";
 
-        if (iu.stage == PipelineStage::VA) {
-            if (iu.state.global == InputUnit::State::GlobalState::VCWait) {
-                dbg() << iu.buf.front() << " VC allocation\n";
-                assert(!iu.buf.empty());
+    for (int oport = 0; oport < get_radix(); oport++) {
+        auto &ou = output_units[oport];
 
-                // Check if output VC is already in use by another packet.
-                if (ou.state.global == OutputUnit::State::GlobalState::Idle) {
-                    dbg() << iu.buf.front() << " VA success\n";
+        // Only do arbitration for inactive output VCs.
+        if (ou.state.global == OutputUnit::State::GlobalState::Idle) {
+            // Arbitration
+            int iport = vc_arbit_round_robin(oport);
 
-                    // Gates open!
-                    iu.state.global = InputUnit::State::GlobalState::Active;
-                    ou.state.global = OutputUnit::State::GlobalState::Active;
+            if (iport == -1) {
+                // dbg() << "no pending VC request!\n";
+            } else {
+                auto &iu = input_units[iport];
 
-                    // Record the input port to the Output unit now.
-                    ou.state.input_port = port;
+                // Gates open!
+                iu.state.global = InputUnit::State::GlobalState::Active;
+                ou.state.global = OutputUnit::State::GlobalState::Active;
 
-                    iu.stage = PipelineStage::SA;
-                    mark_self_reschedule();
-                } else {
-                    dbg() << iu.buf.front() << " VA failure\n";
-                }
+                // Record the input port to the Output unit.
+                ou.state.input_port = iport;
+
+                iu.stage = PipelineStage::SA;
+                mark_self_reschedule();
+
+                dbg() << "VA success for" << iu.buf.front() << std::endl;
             }
         }
     }
@@ -350,7 +376,8 @@ void Router::switch_alloc() {
                 // Check credit first; if no credit available, switch to
                 // CreditWait state and do not attempt allocation at all.
                 if (ou.state.credit_count <= 0) {
-                    dbg() << "Credit stall! credit=" << ou.state.credit_count
+                    dbg() << "[port " << iu.state.route_port
+                          << "] Credit stall! credit=" << ou.state.credit_count
                           << "\n";
                     iu.state.global = InputUnit::State::GlobalState::CreditWait;
                     ou.state.global =
@@ -380,7 +407,8 @@ void Router::switch_alloc() {
                                                    r.put_credit(src_pair.second,
                                                                 Credit{});
                                                }});
-                    dbg() << "Credit decrement, credit="
+                    dbg() << "[port " << iu.state.route_port
+                          << "] Credit decrement, credit="
                           << ou.state.credit_count << "->"
                           << ou.state.credit_count - 1 << ";\n";
                     ou.state.credit_count--;
