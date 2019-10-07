@@ -181,7 +181,7 @@ void Router::tick() {
         credit_update();
 
         // Self-tick autonomously unless all input ports are empty.
-        // FIXME: accuracy?
+        // FIXME: redundant?
         bool empty = true;
         for (int i = 0; i < get_radix(); i++) {
             if (!input_units[i].buf.empty()) {
@@ -192,6 +192,9 @@ void Router::tick() {
         if (!empty) {
             mark_self_reschedule();
         }
+
+        // Reschedule every cycle (~cycle-accurate simulation):
+        // mark_self_reschedule();
     }
 
     // Do the rescheduling at here once to prevent flooding the event queue.
@@ -227,13 +230,18 @@ void Router::credit_update() {
             // switching the stage to Active and simultaneously commencing to
             // the switch allocation.  However, the CreditWait stage doesn't
             // seem to serve much purpose in that case.  This implementation is
-            // what I think of as a more reasonable one.
+            // what I think of as a more natural one.
             assert(ou.state.input_port != -1); // XXX: redundant?
             auto &iu = input_units[ou.state.input_port];
             if (iu.state.global == InputUnit::State::GlobalState::CreditWait) {
                 assert(ou.state.global == OutputUnit::State::GlobalState::CreditWait);
                 iu.state.global = InputUnit::State::GlobalState::Active;
                 ou.state.global = OutputUnit::State::GlobalState::Active;
+                mark_self_reschedule();
+                dbg() << "credit update with kickstart!\n";
+            } else if (ou.state.credit_count == 1) {
+                // XXX: This is for waking up the source node, but is it
+                // necessary for other types of node?
                 mark_self_reschedule();
                 dbg() << "credit update with kickstart!\n";
             } else {
