@@ -2,7 +2,7 @@
 #include <cassert>
 #include <iostream>
 
-std::ostream &operator<<(std::ostream &out, const NodeId &id) {
+std::ostream &operator<<(std::ostream &out, const Id &id) {
     int i;
     if (std::holds_alternative<SrcId>(id)) {
         out << "Src ";

@@ -7,11 +7,12 @@
 #include <map>
 #include <optional>
 
+using RouterPortPair = std::pair<Id, int /*port*/>;
+
 // Encodes channel connectivity in a bidirectional map.
 // Supports runtime checking for connectivity error.
 class Topology {
 public:
-    using RouterPortPair = std::pair<NodeId, int /*port*/>;
     static constexpr RouterPortPair not_connected{RtrId{-1}, -1};
 
     static Topology ring(int n);
@@ -38,6 +39,8 @@ public:
     }
 
     bool connect(const RouterPortPair src, const RouterPortPair dst);
+
+    auto &get_forward_map() { return forward_map; }
 
 private:
     std::map<RouterPortPair /* upstream output port */,
@@ -77,21 +80,57 @@ public:
     // VC is omitted, as we only have one VC per a physical channel.
 };
 
+class Tickable {
+public:
+    virtual void tick() = 0;
+};
+
+class Channel : public Tickable {
+public:
+    Channel(EventQueue &eq, Id id_, const RouterPortPair s,
+            const RouterPortPair d)
+        : src(s), dst(d), eventq(eq),
+          tick_event(id_, [](Tickable &t) { t.tick(); }) {}
+    virtual ~Channel() = default;
+
+    void put(const Flit &flit);
+    void put_credit(const Credit &credit);
+
+    // Tick event
+    void tick() override;
+
+    RouterPortPair src;
+    RouterPortPair dst;
+
+    Id id;
+
+private:
+    EventQueue &eventq;
+    const Event tick_event; // self-tick event.
+    std::deque<Flit> buf;
+    std::deque<Credit> buf_credit;
+};
+
+using ChannelRefVec = std::vector<std::reference_wrapper<Channel>>;
+// Custom printer for Flit
+std::ostream &operator<<(std::ostream &out, const Flit &flit);
+
 /// A node.  Despite its name, it can represent any of a router node, a source
 /// node and a destination node.
-class Router {
+class Router : public Tickable {
 public:
-    Router(EventQueue &eq, NodeId id, int radix,
-           const std::vector<Topology::RouterPortPair> &in_origs,
-           const std::vector<Topology::RouterPortPair> &out_dsts);
+    Router(EventQueue &eq, Id id, int radix,
+           const ChannelRefVec &in_chs,
+           const ChannelRefVec &out_chs);
     // Router::tick_event captures pointer to 'this' in the Router's
     // constructor. To prevent invalidating the 'this' pointer, we should
     // disallow moving/copying of Router.
     Router(const Router &) = delete;
     Router(Router &&) = default;
+    virtual ~Router() = default;
 
     // Tick event
-    void tick();
+    void tick() override;
 
     // Pipeline stages
     enum class PipelineStage {
@@ -155,7 +194,7 @@ public:
         std::optional<Credit> buf_credit;
     };
 
-    NodeId id; // numerical router ID
+    Id id; // numerical router ID
 
 private:
     // Debug output stream
@@ -174,11 +213,17 @@ private:
     long flit_payload_counter{0};  // for simple payload generation
     bool reschedule_next_tick{
         false}; // marks whether to self-tick at the next cycle
-    const std::vector<Topology::RouterPortPair>
-        input_origins; // stores the other end of the input ports. Used for the
-                       // returning of credits.
-    const std::vector<Topology::RouterPortPair>
-        output_destinations; // stores the other end of the output ports
+    // const std::vector<RouterPortPair>
+    //     input_origins; // stores the other end of the input ports. Used for the
+    //                    // returning of credits.
+    // const std::vector<RouterPortPair>
+    //     output_destinations; // stores the other end of the output ports
+
+    const ChannelRefVec
+        input_channels; // references to the input channels for each port
+    const ChannelRefVec
+        output_channels; // references to the input channels for each port
+
     std::vector<InputUnit> input_units;
     std::vector<OutputUnit> output_units;
 

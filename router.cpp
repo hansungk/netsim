@@ -3,6 +3,19 @@
 #include <iomanip>
 #include <iostream>
 
+void Channel::put(const Flit &flit) {
+    buf.push_back(flit);
+    eventq.reschedule(1, tick_event);
+}
+
+void Channel::put_credit(const Credit &credit) {
+    buf_credit.push_back(credit);
+    eventq.reschedule(1, tick_event);
+}
+
+void Channel::tick() {
+}
+
 Topology::Topology(
     std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs) {
     for (auto [src, dst] : pairs) {
@@ -56,11 +69,11 @@ std::ostream &operator<<(std::ostream &out, const Flit &flit) {
     return out;
 }
 
-Router::Router(EventQueue &eq, NodeId id_, int radix,
-               const std::vector<Topology::RouterPortPair> &in_origs,
-               const std::vector<Topology::RouterPortPair> &out_dsts)
-    : id(id_), eventq(eq), tick_event(id_, [](Router &r) { r.tick(); }),
-      input_origins(in_origs), output_destinations(out_dsts) {
+Router::Router(EventQueue &eq, Id id_, int radix,
+               const ChannelRefVec &in_chs,
+               const ChannelRefVec &out_chs)
+    : id(id_), eventq(eq), tick_event(id_, [](Tickable &t) { t.tick(); }),
+      input_channels(in_chs), output_channels(out_chs) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
         output_units.emplace_back(input_buf_size);
@@ -140,12 +153,12 @@ void Router::source_generate() {
         flit_payload_counter++;
 
         assert(get_radix() == 1);
-        auto dst_pair = output_destinations[0];
-        assert(dst_pair != Topology::not_connected);
+        auto out_ch = output_channels[0];
+        out_ch.get().put(flit);
 
-        eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
-                                       r.put(dst_pair.second, flit);
-                                   }});
+        // eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
+        //                                r.put(dst_pair.second, flit);
+        //                            }});
 
         dbg() << "Credit decrement, credit=" << ou.state.credit_count << "->"
               << ou.state.credit_count - 1 << ";\n";
@@ -170,11 +183,14 @@ void Router::destination_consume() {
         iu.buf.pop_front();
         // assert(iu.buf.empty());
 
-        auto src_pair = input_origins[0];
-        assert(src_pair != Topology::not_connected);
-        eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
-                                       r.put_credit(src_pair.second, Credit{});
-                                   }});
+        auto in_ch = input_channels[0];
+        in_ch.get().put_credit(Credit{});
+
+        // eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
+        //                                r.put_credit(src_pair.second, Credit{});
+        //                            }});
+
+        auto src_pair = in_ch.get().src;
         dbg() << "Credit sent to {" << src_pair.first << ", " << src_pair.second
               << "}\n";
 
@@ -433,14 +449,16 @@ void Router::switch_traverse() {
             // No output speedup: there is no need for an output buffer
             // (Ch17.3).  Flits that exit the switch are directly placed on the
             // channel.
-            auto dst_pair = output_destinations[iu.state.route_port];
-            assert(dst_pair != Topology::not_connected);
+            auto out_ch = output_channels[iu.state.route_port];
+            out_ch.get().put(flit);
+            auto dst_pair = out_ch.get().dst;
+
             // FIXME: link traversal time fixed to 1
             dbg() << "Flit " << flit << " sent to {" << dst_pair.first << ", "
                   << dst_pair.second << "}\n";
-            eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
-                                           r.put(dst_pair.second, flit);
-                                       }});
+            // eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
+            //                                r.put(dst_pair.second, flit);
+            //                            }});
 
             // With output speedup:
             // auto &ou = output_units[iu.state.route_port];
@@ -448,13 +466,15 @@ void Router::switch_traverse() {
 
             // CT stage: return credit to the upstream node.
             // FIXME: shouldn't this have timing difference with SA?
-            auto src_pair = input_origins[iport];
-            assert(src_pair != Topology::not_connected);
+            auto in_ch = input_channels[iport];
+            in_ch.get().put_credit(Credit{});
+            auto src_pair = in_ch.get().src;
+
             // FIXME: link traversal time fixed to 1
-            eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
-                                           r.put_credit(src_pair.second,
-                                                        Credit{});
-                                       }});
+            // eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
+            //                                r.put_credit(src_pair.second,
+            //                                             Credit{});
+            //                            }});
             dbg() << "Credit sent to {" << src_pair.first << ", "
                   << src_pair.second << "}\n";
 

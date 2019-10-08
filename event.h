@@ -24,22 +24,29 @@ struct RtrId {
     bool operator==(const RtrId &b) const { return id == b.id; }
 };
 
-using NodeId = std::variant<SrcId, DstId, RtrId>;
+struct ChId {
+    int id;
+    bool operator<(const ChId &b) const { return id < b.id; }
+    bool operator==(const ChId &b) const { return id == b.id; }
+};
 
-std::ostream &operator<<(std::ostream &out, const NodeId &id);
+using Id = std::variant<SrcId, DstId, RtrId, ChId>;
 
-inline bool is_source(NodeId id) { return std::holds_alternative<SrcId>(id); };
-inline bool is_destination(NodeId id) { return std::holds_alternative<DstId>(id); };
-inline bool is_router(NodeId id) { return std::holds_alternative<RtrId>(id); };
+std::ostream &operator<<(std::ostream &out, const Id &id);
+
+inline bool is_source(Id id) { return std::holds_alternative<SrcId>(id); };
+inline bool is_destination(Id id) { return std::holds_alternative<DstId>(id); };
+inline bool is_router(Id id) { return std::holds_alternative<RtrId>(id); };
 
 class Router;
+class Tickable;
 
 class Event {
 public:
-    Event(NodeId i, std::function<void(Router &)> f_) : id(i), f(f_) {}
+    Event(Id i, std::function<void(Tickable &)> f_) : id(i), f(f_) {}
 
-    NodeId id;                       // target router ID
-    std::function<void(Router &)> f; // callback on a specific router
+    Id id;                       // target router ID
+    std::function<void(Tickable &)> f; // callback on a specific router
 };
 
 class EventQueue {
