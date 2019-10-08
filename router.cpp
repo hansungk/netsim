@@ -113,17 +113,20 @@ void Router::put(int port, const Flit flit) {
     dbg() << flit << " Put! buf.size()=" << iu.buf.size() << "\n";
 }
 
-void Router::put_credit(int port, const Credit credit) {
-    assert(port < get_radix() && "no such port!");
-    dbg() << "Put_credit!\n";
+void Router::put_credit(int oport, const Credit credit) {
+    assert(oport < get_radix() && "no such port!");
+    dbg() << "Put_credit! (oport=" << oport << ")\n";
 
     if (eventq.curr_time() != last_reschedule_tick) {
         eventq.reschedule(1, tick_event);
         // dbg() << "scheduled tick to " << eventq.curr_time() + 1 << std::endl;
         last_reschedule_tick = eventq.curr_time();
+        dbg() << id << " well scheduled\n";
+    } else {
+        dbg() << id << " is already scheduled\n";
     }
 
-    auto &ou = output_units[port];
+    auto &ou = output_units[oport];
     ou.buf_credit = credit;
 }
 
@@ -143,6 +146,9 @@ void Router::source_generate() {
         eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
                                        r.put(dst_pair.second, flit);
                                    }});
+
+        dbg() << "Credit decrement, credit=" << ou.state.credit_count << "->"
+              << ou.state.credit_count - 1 << ";\n";
         ou.state.credit_count--;
         assert(ou.state.credit_count >= 0);
 
@@ -169,6 +175,8 @@ void Router::destination_consume() {
         eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
                                        r.put_credit(src_pair.second, Credit{});
                                    }});
+        dbg() << "Credit sent to {" << src_pair.first << ", " << src_pair.second
+              << "}\n";
 
         // Self-tick autonomously unless all input ports are empty.
         mark_self_reschedule();
@@ -239,11 +247,11 @@ void Router::tick() {
 ///
 
 void Router::credit_update() {
-    for (int port = 0; port < get_radix(); port++) {
-        auto &ou = output_units[port];
+    for (int oport = 0; oport < get_radix(); oport++) {
+        auto &ou = output_units[oport];
         if (ou.buf_credit) {
             dbg() << "Credit update! credit=" << ou.state.credit_count << "->"
-                  << ou.state.credit_count + 1 << "\n";
+                  << ou.state.credit_count + 1 << " (oport=" << oport << ")\n";
             ou.state.credit_count++;
             ou.buf_credit = std::nullopt;
 
@@ -264,15 +272,19 @@ void Router::credit_update() {
                 iu.state.global = InputUnit::State::GlobalState::Active;
                 ou.state.global = OutputUnit::State::GlobalState::Active;
                 mark_self_reschedule();
-                dbg() << "credit update with kickstart!\n";
+                dbg() << "credit update with kickstart! (iport="
+                      << ou.state.input_port << ")\n";
             } else if (ou.state.credit_count == 1) {
                 // XXX: This is for waking up the source node, but is it
                 // necessary for other types of node?
                 mark_self_reschedule();
-                dbg() << "credit update with kickstart!\n";
+                dbg() << "credit update with kickstart! (iport="
+                      << ou.state.input_port << ")\n";
             } else {
                 dbg() << "credit update, but no kickstart\n";
             }
+        } else {
+            dbg() << "No credit update, oport=" << oport << std::endl;
         }
     }
 }
@@ -376,9 +388,8 @@ void Router::switch_alloc() {
                 // Check credit first; if no credit available, switch to
                 // CreditWait state and do not attempt allocation at all.
                 if (ou.state.credit_count <= 0) {
-                    dbg() << "[port " << iu.state.route_port
-                          << "] Credit stall! credit=" << ou.state.credit_count
-                          << "\n";
+                    dbg() << "Credit stall! port=" << iu.state.route_port
+                          << std::endl;
                     iu.state.global = InputUnit::State::GlobalState::CreditWait;
                     ou.state.global =
                         OutputUnit::State::GlobalState::CreditWait;
@@ -396,17 +407,6 @@ void Router::switch_alloc() {
                     iu.stage = PipelineStage::ST;
                     mark_self_reschedule();
 
-                    // CT stage: return credit to the upstream node.
-                    // FIXME: shouldn't this have timing difference with SA?
-                    auto src_pair = input_origins[port];
-                    assert(src_pair != Topology::not_connected);
-                    // FIXME: link traversal time fixed to 1
-                    dbg() << "Credit sent to {" << src_pair.first << ", "
-                          << src_pair.second << "}\n";
-                    eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
-                                                   r.put_credit(src_pair.second,
-                                                                Credit{});
-                                               }});
                     dbg() << "[port " << iu.state.route_port
                           << "] Credit decrement, credit="
                           << ou.state.credit_count << "->"
@@ -420,8 +420,8 @@ void Router::switch_alloc() {
 }
 
 void Router::switch_traverse() {
-    for (int port = 0; port < get_radix(); port++) {
-        auto &iu = input_units[port];
+    for (int iport = 0; iport < get_radix(); iport++) {
+        auto &iu = input_units[iport];
 
         if (iu.stage == PipelineStage::ST) {
             dbg() << iu.buf.front() << " switch traverse\n";
@@ -445,6 +445,18 @@ void Router::switch_traverse() {
             // With output speedup:
             // auto &ou = output_units[iu.state.route_port];
             // ou.buf.push_back(flit);
+
+            // CT stage: return credit to the upstream node.
+            // FIXME: shouldn't this have timing difference with SA?
+            auto src_pair = input_origins[iport];
+            assert(src_pair != Topology::not_connected);
+            // FIXME: link traversal time fixed to 1
+            eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
+                                           r.put_credit(src_pair.second,
+                                                        Credit{});
+                                       }});
+            dbg() << "Credit sent to {" << src_pair.first << ", "
+                  << src_pair.second << "}\n";
 
             // ST -> ?? transition
             // TODO: if tail flit, switch global state to idle.

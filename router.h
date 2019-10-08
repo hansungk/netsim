@@ -141,7 +141,6 @@ public:
 
     struct OutputUnit {
         OutputUnit(long bufsize) { state.credit_count = bufsize; }
-
         struct State {
             enum class GlobalState {
                 Idle,
@@ -168,7 +167,7 @@ private:
 private:
     EventQueue &eventq;     // reference to the simulator-global event queue
     const Event tick_event; // self-tick event.
-    const size_t input_buf_size{10};
+    const size_t input_buf_size{3};
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
     long last_reschedule_tick{-1}; // XXX: hacky?
