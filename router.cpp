@@ -3,17 +3,55 @@
 #include <iomanip>
 #include <iostream>
 
+namespace {
+Event tick_event_from_id(Id id) {
+    return Event{id, [](Tickable &t) { t.tick(); }};
+}
+} // namespace
+
 void Channel::put(const Flit &flit) {
-    buf.push_back(flit);
-    eventq.reschedule(1, tick_event);
+    buf.push_back({eventq.curr_time() + delay, flit});
+    eventq.reschedule(delay, tick_event_from_id(dst.first));
 }
 
 void Channel::put_credit(const Credit &credit) {
-    buf_credit.push_back(credit);
-    eventq.reschedule(1, tick_event);
+    buf_credit.push_back({eventq.curr_time() + delay, credit});
+    eventq.reschedule(delay, tick_event_from_id(src.first));
+}
+
+std::optional<Flit> Channel::get() {
+    if (buf.empty()) {
+        return {};
+    }
+
+    auto front = buf.cbegin();
+    if (eventq.curr_time() >= front->first) {
+        assert(eventq.curr_time() == front->first);
+        Flit flit = front->second;
+        buf.pop_front();
+        return flit;
+    } else {
+        return {};
+    }
+}
+
+std::optional<Credit> Channel::get_credit() {
+    if (buf_credit.empty()) {
+        return {};
+    }
+
+    auto front = buf_credit.cbegin();
+    if (eventq.curr_time() >= front->first) {
+        assert(eventq.curr_time() == front->first);
+        buf_credit.pop_front();
+        return front->second;
+    } else {
+        return {};
+    }
 }
 
 void Channel::tick() {
+    std::cout << "Why am I ticked?\n";
 }
 
 Topology::Topology(
@@ -216,8 +254,10 @@ void Router::tick() {
         // Source nodes also needs to manage credit in order to send flits at
         // the right time.
         credit_update();
+        fetch_credit();
     } else if (is_destination(id)) {
         destination_consume();
+        fetch_flit();
     } else {
         // Process each pipeline stage.
         // Stages are processed in reverse dependency order to prevent
@@ -229,6 +269,8 @@ void Router::tick() {
         vc_alloc();
         route_compute();
         credit_update();
+        fetch_credit();
+        fetch_flit();
 
         // Self-tick autonomously unless all input ports are empty.
         // FIXME: redundant?
@@ -261,6 +303,54 @@ void Router::tick() {
 ///
 /// Pipeline stages
 ///
+
+void Router::fetch_flit() {
+    for (int iport = 0; iport < get_radix(); iport++) {
+        auto &ich = input_channels[iport].get();
+        auto &iu = input_units[iport];
+        auto flit_opt = ich.get();
+        if (flit_opt) {
+            dbg() << "Fetched flit " << flit_opt.value()
+                  << ", buf.size()=" << iu.buf.size() << std::endl;
+
+            // If the buffer was empty, this is the only place to kickstart the
+            // pipeline.
+            if (iu.buf.empty()) {
+                // If the input unit state was also idle (empty != idle!), set
+                // the stage to RC.
+                if (iu.stage == PipelineStage::Idle) {
+                    assert(iu.state.global ==
+                           InputUnit::State::GlobalState::Idle);
+
+                    // Idle -> RC transition
+                    iu.state.global = InputUnit::State::GlobalState::Routing;
+                    iu.stage = PipelineStage::RC;
+                }
+
+                mark_self_reschedule();
+            }
+
+            iu.buf.push_back(flit_opt.value());
+
+            // FIXME: Hardcoded buffer size limit
+            assert(iu.buf.size() <= input_buf_size && "Input buffer overflow!");
+        }
+    }
+}
+
+void Router::fetch_credit() {
+    for (int oport = 0; oport < get_radix(); oport++) {
+        auto &ou = output_units[oport];
+        auto &och = output_channels[oport].get();
+        auto credit_opt = och.get_credit();
+
+        if (credit_opt) {
+            dbg() << "Fetched credit, oport=" << oport << std::endl;
+            ou.buf_credit = credit_opt.value();
+            mark_self_reschedule();
+        }
+    }
+}
 
 void Router::credit_update() {
     for (int oport = 0; oport < get_radix(); oport++) {
@@ -300,7 +390,7 @@ void Router::credit_update() {
                 dbg() << "credit update, but no kickstart\n";
             }
         } else {
-            dbg() << "No credit update, oport=" << oport << std::endl;
+            // dbg() << "No credit update, oport=" << oport << std::endl;
         }
     }
 }
@@ -355,7 +445,7 @@ int Router::vc_arbit_round_robin(int out_port) {
 }
 
 void Router::vc_alloc() {
-    dbg() << "VC allocation\n";
+    // dbg() << "VC allocation\n";
 
     for (int oport = 0; oport < get_radix(); oport++) {
         auto &ou = output_units[oport];

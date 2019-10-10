@@ -87,14 +87,16 @@ public:
 
 class Channel : public Tickable {
 public:
-    Channel(EventQueue &eq, Id id_, const RouterPortPair s,
+    Channel(EventQueue &eq, Id id_, const long dl, const RouterPortPair s,
             const RouterPortPair d)
-        : src(s), dst(d), eventq(eq),
+        : src(s), dst(d), eventq(eq), delay(dl),
           tick_event(id_, [](Tickable &t) { t.tick(); }) {}
     virtual ~Channel() = default;
 
     void put(const Flit &flit);
     void put_credit(const Credit &credit);
+    std::optional<Flit> get();
+    std::optional<Credit> get_credit();
 
     // Tick event
     void tick() override;
@@ -106,9 +108,10 @@ public:
 
 private:
     EventQueue &eventq;
+    const long delay;
     const Event tick_event; // self-tick event.
-    std::deque<Flit> buf;
-    std::deque<Credit> buf_credit;
+    std::deque<std::pair<long, Flit>> buf;
+    std::deque<std::pair<long, Credit>> buf_credit;
 };
 
 using ChannelRefVec = std::vector<std::reference_wrapper<Channel>>;
@@ -145,6 +148,8 @@ public:
     void put_credit(int port, const Credit credit);
     void source_generate();
     void destination_consume();
+    void fetch_flit();
+    void fetch_credit();
     void credit_update();
     void route_compute();
     void vc_alloc();
@@ -206,7 +211,7 @@ private:
 private:
     EventQueue &eventq;     // reference to the simulator-global event queue
     const Event tick_event; // self-tick event.
-    const size_t input_buf_size{3};
+    const size_t input_buf_size{6};
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
     long last_reschedule_tick{-1}; // XXX: hacky?
