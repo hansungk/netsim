@@ -19,7 +19,6 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     for (int id = 0; id < terminal_count; id++) {
         // Terminal nodes only have a single port.  Also, destination nodes
         // doesn't have output ports!
-        //
         ChannelRefVec src_input_channels; // empty
         ChannelRefVec src_output_channels;
         ChannelRefVec dst_input_channels;
@@ -77,7 +76,7 @@ void Sim::process(const Event &e) {
         e.f(dst_nodes[std::get<DstId>(e.id).id]);
     } else if (std::holds_alternative<RtrId>(e.id)){
         e.f(routers[std::get<RtrId>(e.id).id]);
-    } else if (std::holds_alternative<ChId>(e.id)) {
-        e.f(channels[std::get<ChId>(e.id).id]);
+    } else {
+        assert(false);
     }
 }

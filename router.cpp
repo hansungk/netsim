@@ -5,9 +5,14 @@
 
 namespace {
 Event tick_event_from_id(Id id) {
-    return Event{id, [](Tickable &t) { t.tick(); }};
+    return Event{id, [](Router &r) { r.tick(); }};
 }
 } // namespace
+
+Channel::Channel(EventQueue &eq, Id id_, const long dl, const RouterPortPair s,
+                 const RouterPortPair d)
+    : src(s), dst(d), eventq(eq), delay(dl),
+      tick_event(tick_event_from_id(id_)) {}
 
 void Channel::put(const Flit &flit) {
     buf.push_back({eventq.curr_time() + delay, flit});
@@ -110,7 +115,7 @@ std::ostream &operator<<(std::ostream &out, const Flit &flit) {
 Router::Router(EventQueue &eq, Id id_, int radix,
                const ChannelRefVec &in_chs,
                const ChannelRefVec &out_chs)
-    : id(id_), eventq(eq), tick_event(id_, [](Tickable &t) { t.tick(); }),
+    : id(id_), eventq(eq), tick_event(tick_event_from_id(id_)),
       input_channels(in_chs), output_channels(out_chs) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
@@ -132,55 +137,6 @@ std::ostream &Router::dbg() const {
     return out;
 }
 
-void Router::put(int port, const Flit flit) {
-    assert(port < get_radix() && "no such port!");
-    auto &iu = input_units[port];
-
-    // If the buffer was empty, this is the only place to kickstart the
-    // pipeline.
-    if (iu.buf.empty()) {
-        // If the input unit state was also idle (empty != idle!), set
-        // the stage to RC.
-        if (iu.stage == PipelineStage::Idle) {
-            assert(iu.state.global == InputUnit::State::GlobalState::Idle);
-
-            // Idle -> RC transition
-            iu.state.global = InputUnit::State::GlobalState::Routing;
-            iu.stage = PipelineStage::RC;
-        }
-
-        if (eventq.curr_time() != last_reschedule_tick) {
-            eventq.reschedule(1, tick_event);
-            // dbg() << "scheduled tick to " << eventq.curr_time() + 1
-            //       << std::endl;
-            last_reschedule_tick = eventq.curr_time();
-        }
-    }
-
-    // FIXME: Hardcoded buffer size limit
-    assert(iu.buf.size() < input_buf_size && "Input buffer overflow!");
-    iu.buf.push_back(flit);
-
-    dbg() << flit << " Put! buf.size()=" << iu.buf.size() << "\n";
-}
-
-void Router::put_credit(int oport, const Credit credit) {
-    assert(oport < get_radix() && "no such port!");
-    dbg() << "Put_credit! (oport=" << oport << ")\n";
-
-    if (eventq.curr_time() != last_reschedule_tick) {
-        eventq.reschedule(1, tick_event);
-        // dbg() << "scheduled tick to " << eventq.curr_time() + 1 << std::endl;
-        last_reschedule_tick = eventq.curr_time();
-        dbg() << id << " well scheduled\n";
-    } else {
-        dbg() << id << " is already scheduled\n";
-    }
-
-    auto &ou = output_units[oport];
-    ou.buf_credit = credit;
-}
-
 void Router::source_generate() {
     auto &ou = output_units[0];
 
@@ -193,10 +149,6 @@ void Router::source_generate() {
         assert(get_radix() == 1);
         auto out_ch = output_channels[0];
         out_ch.get().put(flit);
-
-        // eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
-        //                                r.put(dst_pair.second, flit);
-        //                            }});
 
         dbg() << "Credit decrement, credit=" << ou.state.credit_count << "->"
               << ou.state.credit_count - 1 << ";\n";
@@ -223,10 +175,6 @@ void Router::destination_consume() {
 
         auto in_ch = input_channels[0];
         in_ch.get().put_credit(Credit{});
-
-        // eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
-        //                                r.put_credit(src_pair.second, Credit{});
-        //                            }});
 
         auto src_pair = in_ch.get().src;
         dbg() << "Credit sent to {" << src_pair.first << ", " << src_pair.second
@@ -332,7 +280,6 @@ void Router::fetch_flit() {
 
             iu.buf.push_back(flit_opt.value());
 
-            // FIXME: Hardcoded buffer size limit
             assert(iu.buf.size() <= input_buf_size && "Input buffer overflow!");
         }
     }
@@ -542,29 +489,17 @@ void Router::switch_traverse() {
             auto out_ch = output_channels[iu.state.route_port];
             out_ch.get().put(flit);
             auto dst_pair = out_ch.get().dst;
-
-            // FIXME: link traversal time fixed to 1
             dbg() << "Flit " << flit << " sent to {" << dst_pair.first << ", "
                   << dst_pair.second << "}\n";
-            // eventq.reschedule(1, Event{dst_pair.first, [=](Router &r) {
-            //                                r.put(dst_pair.second, flit);
-            //                            }});
 
             // With output speedup:
             // auto &ou = output_units[iu.state.route_port];
             // ou.buf.push_back(flit);
 
             // CT stage: return credit to the upstream node.
-            // FIXME: shouldn't this have timing difference with SA?
             auto in_ch = input_channels[iport];
             in_ch.get().put_credit(Credit{});
             auto src_pair = in_ch.get().src;
-
-            // FIXME: link traversal time fixed to 1
-            // eventq.reschedule(1, Event{src_pair.first, [=](Router &r) {
-            //                                r.put_credit(src_pair.second,
-            //                                             Credit{});
-            //                            }});
             dbg() << "Credit sent to {" << src_pair.first << ", "
                   << src_pair.second << "}\n";
 

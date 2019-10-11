@@ -39,14 +39,13 @@ inline bool is_destination(Id id) { return std::holds_alternative<DstId>(id); };
 inline bool is_router(Id id) { return std::holds_alternative<RtrId>(id); };
 
 class Router;
-class Tickable;
 
 class Event {
 public:
-    Event(Id i, std::function<void(Tickable &)> f_) : id(i), f(f_) {}
+    Event(Id i, std::function<void(Router &)> f_) : id(i), f(f_) {}
 
     Id id;                       // target router ID
-    std::function<void(Tickable &)> f; // callback on a specific router
+    std::function<void(Router &)> f; // callback on a specific router
 };
 
 class EventQueue {

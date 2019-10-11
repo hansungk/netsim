@@ -80,18 +80,10 @@ public:
     // VC is omitted, as we only have one VC per a physical channel.
 };
 
-class Tickable {
-public:
-    virtual void tick() = 0;
-};
-
-class Channel : public Tickable {
+class Channel {
 public:
     Channel(EventQueue &eq, Id id_, const long dl, const RouterPortPair s,
-            const RouterPortPair d)
-        : src(s), dst(d), eventq(eq), delay(dl),
-          tick_event(id_, [](Tickable &t) { t.tick(); }) {}
-    virtual ~Channel() = default;
+            const RouterPortPair d);
 
     void put(const Flit &flit);
     void put_credit(const Credit &credit);
@@ -99,7 +91,7 @@ public:
     std::optional<Credit> get_credit();
 
     // Tick event
-    void tick() override;
+    void tick();
 
     RouterPortPair src;
     RouterPortPair dst;
@@ -120,7 +112,7 @@ std::ostream &operator<<(std::ostream &out, const Flit &flit);
 
 /// A node.  Despite its name, it can represent any of a router node, a source
 /// node and a destination node.
-class Router : public Tickable {
+class Router {
 public:
     Router(EventQueue &eq, Id id, int radix,
            const ChannelRefVec &in_chs,
@@ -130,10 +122,9 @@ public:
     // disallow moving/copying of Router.
     Router(const Router &) = delete;
     Router(Router &&) = default;
-    virtual ~Router() = default;
 
     // Tick event
-    void tick() override;
+    void tick();
 
     // Pipeline stages
     enum class PipelineStage {
@@ -144,8 +135,6 @@ public:
         ST,
     };
 
-    void put(int port, const Flit flit);
-    void put_credit(int port, const Credit credit);
     void source_generate();
     void destination_consume();
     void fetch_flit();
