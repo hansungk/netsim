@@ -60,29 +60,20 @@ Topology::Topology(
 
 Topology Topology::ring(int n) {
     Topology top;
+    std::vector<int> ids;
+    bool res = true;
 
-    // Port usage: 0:terminal, 1:left, 2:right
-    // Inter-router channels
-    for (int i = 0; i < n; i++) {
-        int l = i;
-        int r = (i + 1) % n;
-        RouterPortPair lport{RtrId{l}, 2};
-        RouterPortPair rport{RtrId{r}, 1};
-        // Bidirectional channel
-        top.connect(lport, rport);
-        top.connect(rport, lport);
+    for (int id = 0; id < n; id++) {
+        ids.push_back(id);
     }
+
+    // Inter-router channels
+    res &= top.connect_ring(ids);
 
     // Terminal node channels
-    for (int i = 0; i < n; i++) {
-        RouterPortPair src_port{SrcId{i}, 0};
-        RouterPortPair dst_port{DstId{i}, 0};
-        RouterPortPair rtr_port{RtrId{i}, 0};
-        // Bidirectional channel
-        top.connect(src_port, rtr_port);
-        top.connect(rtr_port, dst_port);
-    }
+    res &= top.connect_terminals(ids);
 
+    assert(res);
     return top;
 }
 
@@ -94,6 +85,46 @@ bool Topology::connect(const RouterPortPair input,
         return false;
     }
     return insert_success;
+}
+
+bool Topology::connect_terminals(const std::vector<int> &ids) {
+    bool res = true;
+
+    for (auto id : ids) {
+        RouterPortPair src_port{SrcId{id}, 0};
+        RouterPortPair dst_port{DstId{id}, 0};
+        RouterPortPair rtr_port{RtrId{id}, 0};
+
+        // Bidirectional channel
+        res &= connect(src_port, rtr_port);
+        res &= connect(rtr_port, dst_port);
+        if (!res) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// Port usage: 0:terminal, 1:counter-clockwise, 2:clockwise
+bool Topology::connect_ring(const std::vector<int> &ids) {
+    bool res = true;
+
+    for (size_t i = 0; i < ids.size(); i++) {
+        int l = ids[i];
+        int r = ids[(i + 1) % ids.size()];
+        RouterPortPair lport{RtrId{l}, 2};
+        RouterPortPair rport{RtrId{r}, 1};
+
+        // Bidirectional channel
+        res &= connect(lport, rport);
+        res &= connect(rport, lport);
+        if (!res) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 std::ostream &operator<<(std::ostream &out, const Flit &flit) {
@@ -360,7 +391,6 @@ void Router::route_compute() {
                 int total = 4;
                 int cw_dist =
                     (flit.route_info.dst - flit.route_info.src + total) % total;
-                dbg() << "cw_dist=" << cw_dist << std::endl;
                 if (cw_dist < total / 2) {
                     // Clockwise is better
                     iu.state.route_port = 2;

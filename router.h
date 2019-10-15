@@ -39,6 +39,8 @@ public:
     }
 
     bool connect(const RouterPortPair src, const RouterPortPair dst);
+    bool connect_terminals(const std::vector<int> &ids);
+    bool connect_ring(const std::vector<int> &ids);
 
     auto &get_forward_map() { return forward_map; }
 
