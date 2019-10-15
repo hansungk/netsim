@@ -188,7 +188,10 @@ public:
         std::optional<Credit> buf_credit;
     };
 
-    Id id; // numerical router ID
+    Id id;                     // numerical router ID
+    long flit_arrive_count{0}; // # of flits arrived for the destination node
+    long flit_generate_count{
+        0}; // # of flits generated for the destination node
 
 private:
     // Debug output stream

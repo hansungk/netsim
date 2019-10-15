@@ -69,7 +69,6 @@ Topology Topology::ring(int n) {
 
     // Inter-router channels
     res &= top.connect_ring(ids);
-
     // Terminal node channels
     res &= top.connect_terminals(ids);
 
@@ -256,6 +255,7 @@ void Router::source_generate() {
     ou.state.credit_count--;
     assert(ou.state.credit_count >= 0);
 
+    flit_generate_count++;
     dbg() << flit << " Flit created and sent!\n";
 
     // TODO: for now, infinitely generate flits.
@@ -268,6 +268,8 @@ void Router::destination_consume() {
     if (!iu.buf.empty()) {
         dbg() << "Destination buf size=" << iu.buf.size() << std::endl;
         dbg() << iu.buf.front() << " Flit arrived!\n";
+
+        flit_arrive_count++;
         iu.buf.pop_front();
         // assert(iu.buf.empty());
 

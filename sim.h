@@ -13,9 +13,10 @@ public:
     Sim(int terminal_count, int router_count, int radix, Topology &top);
 
     // Run the simulator.
-    void run();
+    void run(long until = -1);
     // Process an event.
     void process(const Event &e);
+    void report() const;
 
     void handler();
 

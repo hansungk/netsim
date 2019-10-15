@@ -62,10 +62,30 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     }
 }
 
-void Sim::run() {
+void Sim::run(long until) {
     while (!eventq.empty()) {
         auto e = eventq.pop();
+        // Terminate simulation if the specified time is expired
+        if (0 < until && until < eventq.curr_time()) {
+            break;
+        }
         process(e);
+    }
+
+    report();
+}
+
+void Sim::report() const {
+    std::cout << std::endl;
+    std::cout << "==== SIMULATION RESULT ====\n";
+    for (auto &src : src_nodes) {
+        std::cout << "[" << src.id << "] ";
+        std::cout << "# of flits generated: " << src.flit_generate_count << std::endl;
+    }
+
+    for (auto &dst : dst_nodes) {
+        std::cout << "[" << dst.id << "] ";
+        std::cout << "# of flits arrived: " << dst.flit_arrive_count << std::endl;
     }
 }
 
