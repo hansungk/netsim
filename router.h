@@ -193,7 +193,8 @@ private:
     std::ostream &dbg() const;
 
     // Mark self-reschedule on the next tick
-    void mark_self_reschedule() { reschedule_next_tick = true; }
+    void mark_reschedule() { reschedule_next_tick = true; }
+    void do_reschedule();
 
 private:
     EventQueue &eventq;     // reference to the simulator-global event queue

@@ -126,60 +126,13 @@ std::ostream &Router::dbg() const {
     return out;
 }
 
-void Router::source_generate() {
-    auto &ou = output_units[0];
-
-    if (ou.state.credit_count <= 0) {
-        dbg() << "Credit stall!\n";
-        return;
-    }
-
-    // TODO: All flits go to node #2!
-    Flit flit{Flit::Type::Body, std::get<SrcId>(id).id, 2,
-              flit_payload_counter};
-    if (flit_payload_counter == 0) {
-        flit.type = Flit::Type::Head;
-        flit_payload_counter++;
-    } else if (flit_payload_counter == 4 /* FIXME */) {
-        flit.type = Flit::Type::Tail;
-        flit_payload_counter = 0;
-    } else {
-        flit_payload_counter++;
-    }
-
-    assert(get_radix() == 1);
-    auto out_ch = output_channels[0];
-    out_ch.get().put(flit);
-
-    dbg() << "Credit decrement, credit=" << ou.state.credit_count << "->"
-          << ou.state.credit_count - 1 << ";\n";
-    ou.state.credit_count--;
-    assert(ou.state.credit_count >= 0);
-
-    dbg() << flit << " Flit created and sent!\n";
-
-    // TODO: for now, infinitely generate flits.
-    mark_self_reschedule();
-}
-
-void Router::destination_consume() {
-    auto &iu = input_units[0];
-
-    if (!iu.buf.empty()) {
-        dbg() << "Destination buf size=" << iu.buf.size() << std::endl;
-        dbg() << iu.buf.front() << " Flit arrived!\n";
-        iu.buf.pop_front();
-        // assert(iu.buf.empty());
-
-        auto in_ch = input_channels[0];
-        in_ch.get().put_credit(Credit{});
-
-        auto src_pair = in_ch.get().src;
-        dbg() << "Credit sent to {" << src_pair.first << ", " << src_pair.second
-              << "}\n";
-
-        // Self-tick autonomously unless all input ports are empty.
-        mark_self_reschedule();
+void Router::do_reschedule() {
+    if (reschedule_next_tick && eventq.curr_time() != last_reschedule_tick) {
+        eventq.reschedule(1, tick_event);
+        // dbg() << "self-rescheduled to " << eventq.curr_time() + 1 <<
+        // std::endl;
+        // XXX: Hacky!
+        last_reschedule_tick = eventq.curr_time();
     }
 }
 
@@ -228,17 +181,12 @@ void Router::tick() {
         //     }
         // }
         // if (!empty) {
-        //     mark_self_reschedule();
+        //     mark_reschedule();
         // }
     }
 
     // Do the rescheduling at here once to prevent flooding the event queue.
-    if (reschedule_next_tick && eventq.curr_time() != last_reschedule_tick) {
-        eventq.reschedule(1, tick_event);
-        // dbg() << "self-rescheduled to " << eventq.curr_time() + 1 << std::endl;
-        // XXX: Hacky!
-        last_reschedule_tick = eventq.curr_time();
-    }
+    do_reschedule();
 
     last_tick = eventq.curr_time();
 }
@@ -246,6 +194,63 @@ void Router::tick() {
 ///
 /// Pipeline stages
 ///
+
+void Router::source_generate() {
+    auto &ou = output_units[0];
+
+    if (ou.state.credit_count <= 0) {
+        dbg() << "Credit stall!\n";
+        return;
+    }
+
+    // TODO: All flits go to node #2!
+    Flit flit{Flit::Type::Body, std::get<SrcId>(id).id, 2,
+              flit_payload_counter};
+    if (flit_payload_counter == 0) {
+        flit.type = Flit::Type::Head;
+        flit_payload_counter++;
+    } else if (flit_payload_counter == 4 /* FIXME */) {
+        flit.type = Flit::Type::Tail;
+        flit_payload_counter = 0;
+    } else {
+        flit_payload_counter++;
+    }
+
+    assert(get_radix() == 1);
+    auto out_ch = output_channels[0];
+    out_ch.get().put(flit);
+
+    dbg() << "Credit decrement, credit=" << ou.state.credit_count << "->"
+          << ou.state.credit_count - 1 << ";\n";
+    ou.state.credit_count--;
+    assert(ou.state.credit_count >= 0);
+
+    dbg() << flit << " Flit created and sent!\n";
+
+    // TODO: for now, infinitely generate flits.
+    mark_reschedule();
+}
+
+void Router::destination_consume() {
+    auto &iu = input_units[0];
+
+    if (!iu.buf.empty()) {
+        dbg() << "Destination buf size=" << iu.buf.size() << std::endl;
+        dbg() << iu.buf.front() << " Flit arrived!\n";
+        iu.buf.pop_front();
+        // assert(iu.buf.empty());
+
+        auto in_ch = input_channels[0];
+        in_ch.get().put_credit(Credit{});
+
+        auto src_pair = in_ch.get().src;
+        dbg() << "Credit sent to {" << src_pair.first << ", " << src_pair.second
+              << "}\n";
+
+        // Self-tick autonomously unless all input ports are empty.
+        mark_reschedule();
+    }
+}
 
 void Router::fetch_flit() {
     for (int iport = 0; iport < get_radix(); iport++) {
@@ -270,7 +275,7 @@ void Router::fetch_flit() {
                     iu.stage = PipelineStage::RC;
                 }
 
-                mark_self_reschedule();
+                mark_reschedule();
             }
 
             iu.buf.push_back(flit_opt.value());
@@ -289,7 +294,7 @@ void Router::fetch_credit() {
         if (credit_opt) {
             dbg() << "Fetched credit, oport=" << oport << std::endl;
             ou.buf_credit = credit_opt.value();
-            mark_self_reschedule();
+            mark_reschedule();
         }
     }
 }
@@ -319,13 +324,13 @@ void Router::credit_update() {
                 assert(ou.state.global == OutputUnit::State::GlobalState::CreditWait);
                 iu.state.global = InputUnit::State::GlobalState::Active;
                 ou.state.global = OutputUnit::State::GlobalState::Active;
-                mark_self_reschedule();
+                mark_reschedule();
                 dbg() << "credit update with kickstart! (iport="
                       << ou.state.input_port << ")\n";
             } else if (ou.state.credit_count == 1) {
                 // XXX: This is for waking up the source node, but is it
                 // necessary for other types of node?
-                mark_self_reschedule();
+                mark_reschedule();
                 dbg() << "credit update with kickstart! (iport="
                       << ou.state.input_port << ")\n";
             } else {
@@ -360,7 +365,7 @@ void Router::route_compute() {
             // RC -> VA transition
             iu.state.global = InputUnit::State::GlobalState::VCWait;
             iu.stage = PipelineStage::VA;
-            mark_self_reschedule();
+            mark_reschedule();
         }
     }
 }
@@ -411,7 +416,7 @@ void Router::vc_alloc() {
                 ou.state.input_port = iport;
 
                 iu.stage = PipelineStage::SA;
-                mark_self_reschedule();
+                mark_reschedule();
 
                 dbg() << "VA success for " << iu.buf.front() << std::endl;
             }
@@ -455,7 +460,7 @@ void Router::switch_alloc() {
                     // SA -> ST transition
                     iu.state.global = InputUnit::State::GlobalState::Active;
                     iu.stage = PipelineStage::ST;
-                    mark_self_reschedule();
+                    mark_reschedule();
 
                     dbg() << "[port " << iu.state.route_port
                           << "] Credit decrement, credit="
@@ -514,11 +519,11 @@ void Router::switch_traverse() {
                     iu.state.global = InputUnit::State::GlobalState::Routing;
                     iu.stage = PipelineStage::RC;
                 }
-                mark_self_reschedule();
+                mark_reschedule();
             } else {
                 iu.state.global = InputUnit::State::GlobalState::Active;
                 iu.stage = PipelineStage::SA;
-                mark_self_reschedule();
+                mark_reschedule();
             }
         }
     }
