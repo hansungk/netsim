@@ -58,6 +58,7 @@ public:
     enum class Type {
         Head,
         Body,
+        Tail,
     };
 
     Flit(Type t, int src, int dst, long p) : type(t), payload(p) {
@@ -89,9 +90,6 @@ public:
     void put_credit(const Credit &credit);
     std::optional<Flit> get();
     std::optional<Credit> get_credit();
-
-    // Tick event
-    void tick();
 
     RouterPortPair src;
     RouterPortPair dst;
