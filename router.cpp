@@ -357,7 +357,17 @@ void Router::route_compute() {
                 // Port 0 is always connected to a terminal node
                 iu.state.route_port = 0;
             } else {
-                iu.state.route_port = 2;
+                int total = 4;
+                int cw_dist =
+                    (flit.route_info.dst - flit.route_info.src + total) % total;
+                dbg() << "cw_dist=" << cw_dist << std::endl;
+                if (cw_dist < total / 2) {
+                    // Clockwise is better
+                    iu.state.route_port = 2;
+                } else {
+                    // TODO: if CW == CCW, pick random
+                    iu.state.route_port = 1;
+                }
             }
 
             dbg() << flit << " RC success (port=" << iu.state.route_port << ")\n";

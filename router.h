@@ -206,17 +206,11 @@ private:
     long flit_payload_counter{0};  // for simple payload generation
     bool reschedule_next_tick{
         false}; // marks whether to self-tick at the next cycle
-    // const std::vector<RouterPortPair>
-    //     input_origins; // stores the other end of the input ports. Used for the
-    //                    // returning of credits.
-    // const std::vector<RouterPortPair>
-    //     output_destinations; // stores the other end of the output ports
 
     const ChannelRefVec
         input_channels; // references to the input channels for each port
     const ChannelRefVec
         output_channels; // references to the input channels for each port
-
     std::vector<InputUnit> input_units;
     std::vector<OutputUnit> output_units;
 
