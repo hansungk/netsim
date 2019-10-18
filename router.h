@@ -7,6 +7,10 @@
 #include <map>
 #include <optional>
 
+struct Stat {
+    long double_tick_count{0};
+};
+
 using RouterPortPair = std::pair<Id, int /*port*/>;
 
 // Encodes channel connectivity in a bidirectional map.
@@ -114,9 +118,8 @@ std::ostream &operator<<(std::ostream &out, const Flit &flit);
 /// node and a destination node.
 class Router {
 public:
-    Router(EventQueue &eq, Id id, int radix,
-           const ChannelRefVec &in_chs,
-           const ChannelRefVec &out_chs);
+    Router(EventQueue &eq, Stat &st, Id id, int radix,
+           const ChannelRefVec &in_chs, const ChannelRefVec &out_chs);
     // Router::tick_event captures pointer to 'this' in the Router's
     // constructor. To prevent invalidating the 'this' pointer, we should
     // disallow moving/copying of Router.
@@ -203,6 +206,7 @@ private:
 
 private:
     EventQueue &eventq;     // reference to the simulator-global event queue
+    Stat &stat;
     const Event tick_event; // self-tick event.
     const size_t input_buf_size{6};
     long last_tick{-1}; // record the last tick time to prevent double-tick in

@@ -21,6 +21,7 @@ public:
     void handler();
 
     EventQueue eventq{}; // global event queue
+    Stat stat;
     Topology &topology;
     std::map<std::pair<RouterPortPair, RouterPortPair>, Channel &> channel_map{};
     std::vector<Channel> channels{};

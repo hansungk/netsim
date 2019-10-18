@@ -131,10 +131,9 @@ std::ostream &operator<<(std::ostream &out, const Flit &flit) {
     return out;
 }
 
-Router::Router(EventQueue &eq, Id id_, int radix,
-               const ChannelRefVec &in_chs,
-               const ChannelRefVec &out_chs)
-    : id(id_), eventq(eq), tick_event(tick_event_from_id(id_)),
+Router::Router(EventQueue &eq, Stat &st, Id id_, int radix,
+               const ChannelRefVec &in_chs, const ChannelRefVec &out_chs)
+    : id(id_), eventq(eq), stat(st), tick_event(tick_event_from_id(id_)),
       input_channels(in_chs), output_channels(out_chs) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
@@ -171,6 +170,7 @@ void Router::tick() {
     if (eventq.curr_time() == last_tick) {
         dbg() << "WARN: double tick! curr_time=" << eventq.curr_time()
               << ", last_tick=" << last_tick << std::endl;
+        stat.double_tick_count++;
         return;
     }
     // assert(eventq.curr_time() != last_tick);
@@ -234,8 +234,8 @@ void Router::source_generate() {
     }
 
     // TODO: All flits go to node #2!
-    Flit flit{Flit::Type::Body, std::get<SrcId>(id).id, 2,
-              flit_payload_counter};
+    Flit flit{Flit::Type::Body, std::get<SrcId>(id).id,
+              (std::get<SrcId>(id).id + 2) % 4, flit_payload_counter};
     if (flit_payload_counter == 0) {
         flit.type = Flit::Type::Head;
         flit_payload_counter++;
@@ -390,7 +390,7 @@ void Router::route_compute() {
                 // Port 0 is always connected to a terminal node
                 iu.state.route_port = 0;
             } else {
-                int total = 4;
+                int total = 4; /* FIXME: hardcoded */
                 int cw_dist =
                     (flit.route_info.dst - flit.route_info.src + total) % total;
                 if (cw_dist < total / 2) {
@@ -460,7 +460,7 @@ void Router::vc_alloc() {
                 iu.stage = PipelineStage::SA;
                 mark_reschedule();
 
-                dbg() << "VA success for " << iu.buf.front() << std::endl;
+                dbg() << "VA success for " << iu.buf.front() << " to port " << oport << std::endl;
             }
         }
     }

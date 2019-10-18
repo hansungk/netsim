@@ -36,8 +36,10 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
         src_output_channels.push_back(src_output_channel);
         dst_input_channels.push_back(dst_input_channel);
 
-        src_nodes.emplace_back(eventq, SrcId{id}, 1, src_input_channels, src_output_channels);
-        dst_nodes.emplace_back(eventq, DstId{id}, 1, dst_input_channels, dst_output_channels);
+        src_nodes.emplace_back(eventq, stat, SrcId{id}, 1, src_input_channels,
+                               src_output_channels);
+        dst_nodes.emplace_back(eventq, stat, DstId{id}, 1, dst_input_channels,
+                               dst_output_channels);
     }
 
     // Initialize router nodes
@@ -58,7 +60,8 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
             input_channels.push_back(input_channel);
         }
 
-        routers.emplace_back(eventq, RtrId{id}, radix, input_channels, output_channels);
+        routers.emplace_back(eventq, stat, RtrId{id}, radix, input_channels,
+                             output_channels);
     }
 }
 
@@ -78,6 +81,11 @@ void Sim::run(long until) {
 void Sim::report() const {
     std::cout << std::endl;
     std::cout << "==== SIMULATION RESULT ====\n";
+
+    std::cout << "# of ticks: " << eventq.curr_time() << std::endl;
+    std::cout << "# of double ticks: " << stat.double_tick_count << std::endl;
+    std::cout << std::endl;
+
     for (auto &src : src_nodes) {
         std::cout << "[" << src.id << "] ";
         std::cout << "# of flits generated: " << src.flit_generate_count << std::endl;
