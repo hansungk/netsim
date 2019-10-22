@@ -147,9 +147,11 @@ public:
     void vc_alloc();
     void switch_alloc();
     void switch_traverse();
+    void update_states();
 
     // Allocators and arbiters
     int vc_arbit_round_robin(int out_port);
+    int sa_arbit_round_robin(int out_port);
 
     // Misc
     const Event &get_tick_event() const { return tick_event; }
@@ -164,7 +166,9 @@ public:
                 VCWait,
                 Active,
                 CreditWait,
-            } global{GlobalState::Idle};
+            };
+            GlobalState global{GlobalState::Idle};
+            GlobalState next_global{GlobalState::Idle};
             int route_port{-1};
             int output_vc{0};
             int pointer;
@@ -182,7 +186,9 @@ public:
                 Idle,
                 Active,
                 CreditWait,
-            } global{GlobalState::Idle};
+            };
+            GlobalState global{GlobalState::Idle};
+            GlobalState next_global{GlobalState::Idle};
             int input_port{-1};
             int input_vc{0};
             int credit_count; // FIXME: hardcoded
@@ -191,7 +197,7 @@ public:
         std::optional<Credit> buf_credit;
     };
 
-    Id id;                     // numerical router ID
+    Id id;                     // router ID
     long flit_arrive_count{0}; // # of flits arrived for the destination node
     long flit_generate_count{
         0}; // # of flits generated for the destination node
@@ -224,7 +230,8 @@ private:
     std::vector<OutputUnit> output_units;
 
     // Allocator
-    int last_grant_input{0}; // Round-robin allocator
+    int va_last_grant_input{0}; // Round-robin allocator
+    int sa_last_grant_input{0}; // Round-robin allocator
 };
 
 #endif

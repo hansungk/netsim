@@ -7,7 +7,8 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     // Initialize channels
     int id = 0;
     for (auto conn : top.get_forward_map()) {
-        channels.emplace_back(eventq, ChId{id}, 1/*FIXME*/, conn.first, conn.second);
+        channels.emplace_back(eventq, ChId{id}, channel_delay, conn.first,
+                              conn.second);
         id++;
     }
     for (auto &ch : channels) {
