@@ -171,12 +171,12 @@ public:
             GlobalState next_global{GlobalState::Idle};
             int route_port{-1};
             int output_vc{0};
-            int pointer;
             // credit count is omitted; it can be found in the output
             // units instead.
         } state;
         PipelineStage stage{PipelineStage::Idle};
-        std::deque<Flit> buf;
+        std::deque<Flit> buf{};
+        std::optional<Flit> st_ready{};
     };
 
     struct OutputUnit {
@@ -214,7 +214,7 @@ private:
     EventQueue &eventq;     // reference to the simulator-global event queue
     Stat &stat;
     const Event tick_event; // self-tick event.
-    const size_t input_buf_size{6};
+    const size_t input_buf_size{100};
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
     long last_reschedule_tick{-1}; // XXX: hacky?
