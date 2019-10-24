@@ -159,40 +159,36 @@ public:
 
 public:
     struct InputUnit {
-        struct State {
-            enum class GlobalState {
-                Idle,
-                Routing,
-                VCWait,
-                Active,
-                CreditWait,
-            };
-            GlobalState global{GlobalState::Idle};
-            GlobalState next_global{GlobalState::Idle};
-            int route_port{-1};
-            int output_vc{0};
-            // credit count is omitted; it can be found in the output
-            // units instead.
-        } state;
+        enum class GlobalState {
+            Idle,
+            Routing,
+            VCWait,
+            Active,
+            CreditWait,
+        };
+        GlobalState global{GlobalState::Idle};
+        GlobalState next_global{GlobalState::Idle};
+        int route_port{-1};
+        int output_vc{0};
+        // credit count is omitted; it can be found in the output
+        // units instead.
         PipelineStage stage{PipelineStage::Idle};
         std::deque<Flit> buf{};
         std::optional<Flit> st_ready{};
     };
 
     struct OutputUnit {
-        OutputUnit(long bufsize) { state.credit_count = bufsize; }
-        struct State {
-            enum class GlobalState {
-                Idle,
-                Active,
-                CreditWait,
-            };
-            GlobalState global{GlobalState::Idle};
-            GlobalState next_global{GlobalState::Idle};
-            int input_port{-1};
-            int input_vc{0};
-            int credit_count; // FIXME: hardcoded
-        } state;
+        OutputUnit(long bufsize) { credit_count = bufsize; }
+        enum class GlobalState {
+            Idle,
+            Active,
+            CreditWait,
+        };
+        GlobalState global{GlobalState::Idle};
+        GlobalState next_global{GlobalState::Idle};
+        int input_port{-1};
+        int input_vc{0};
+        int credit_count; // FIXME: hardcoded
         // std::deque<Flit> buf;
         std::optional<Credit> buf_credit;
     };
