@@ -57,6 +57,20 @@ private:
         reverse_map;
 };
 
+enum class TopoType {
+    Torus,
+    FoldedClos,
+};
+
+struct TopoDesc {
+    TopoType type;
+    int k; // side length for tori
+    int r; // dimension for tori
+};
+
+/// Source-side all-in-one route computation.
+std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id);
+
 /// Flit and credit encoding.
 /// Follows Fig. 16.13.
 class Flit {
@@ -76,7 +90,9 @@ public:
     struct RouteInfo {
         int src;    // source node ID
         int dst{3}; // destination node ID
-    } route_info;
+        std::vector<int> path;
+        int idx{0};
+    } route_info; // only contained in the head flit
     long payload;
 };
 
@@ -118,7 +134,7 @@ std::ostream &operator<<(std::ostream &out, const Flit &flit);
 /// node and a destination node.
 class Router {
 public:
-    Router(EventQueue &eq, Stat &st, Id id, int radix,
+    Router(EventQueue &eq, Stat &st, TopoDesc td, Id id, int radix,
            const ChannelRefVec &in_chs, const ChannelRefVec &out_chs);
     // Router::tick_event captures pointer to 'this' in the Router's
     // constructor. To prevent invalidating the 'this' pointer, we should
@@ -209,6 +225,7 @@ private:
 private:
     EventQueue &eventq;     // reference to the simulator-global event queue
     Stat &stat;
+    const TopoDesc top_desc;
     const Event tick_event; // self-tick event.
     const size_t input_buf_size{100};
     long last_tick{-1}; // record the last tick time to prevent double-tick in
@@ -226,8 +243,8 @@ private:
     std::vector<OutputUnit> output_units;
 
     // Allocator
-    int va_last_grant_input{0}; // Round-robin allocator
-    int sa_last_grant_input{0}; // Round-robin allocator
+    int va_last_grant_input;
+    int sa_last_grant_input;
 };
 
 #endif

@@ -2,6 +2,7 @@
 #include <cassert>
 #include <iomanip>
 #include <iostream>
+#include <random>
 
 namespace {
 Event tick_event_from_id(Id id) {
@@ -131,10 +132,11 @@ std::ostream &operator<<(std::ostream &out, const Flit &flit) {
     return out;
 }
 
-Router::Router(EventQueue &eq, Stat &st, Id id_, int radix,
+Router::Router(EventQueue &eq, Stat &st, TopoDesc td, Id id_, int radix,
                const ChannelRefVec &in_chs, const ChannelRefVec &out_chs)
-    : id(id_), eventq(eq), stat(st), tick_event(tick_event_from_id(id_)),
-      input_channels(in_chs), output_channels(out_chs) {
+    : id(id_), eventq(eq), stat(st), top_desc(td),
+      tick_event(tick_event_from_id(id_)), input_channels(in_chs),
+      output_channels(out_chs) {
     for (int port = 0; port < radix; port++) {
         input_units.emplace_back();
         output_units.emplace_back(input_buf_size);
@@ -146,6 +148,14 @@ Router::Router(EventQueue &eq, Stat &st, Id id_, int radix,
         input_units[0].route_port = 0;
         output_units[0].input_port = 0;
     }
+
+    std::random_device rd;
+    std::mt19937 gen{rd()};
+    std::uniform_int_distribution<> dist{0, get_radix() - 1};
+    va_last_grant_input = dist(gen);
+    va_last_grant_input = 0;
+    sa_last_grant_input = dist(gen);
+    sa_last_grant_input = 0;
 }
 
 std::ostream &Router::dbg() const {
@@ -165,11 +175,41 @@ void Router::do_reschedule() {
     }
 }
 
+std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id) {
+    std::vector<int> path;
+
+    int total = td.k;
+    int cw_dist = (dst_id - src_id + total) % total;
+    if (cw_dist <= total / 2) {
+        // Clockwise
+        for (int i = 0; i < cw_dist; i++) {
+            path.push_back(2);
+        }
+        path.push_back(0);
+    } else {
+        // Counterclockwise
+        // TODO: if CW == CCW, pick random
+        for (int i = 0; i < total - cw_dist; i++) {
+            path.push_back(1);
+        }
+        path.push_back(0);
+    }
+
+    std::cout << "Source route computation: " << src_id << " -> " << dst_id
+              << ": {";
+    for (auto i : path) {
+        std::cout << i << ",";
+    }
+    std::cout << "}\n";
+
+    return path;
+}
+
 void Router::tick() {
     // Make sure this router has not been already ticked in this cycle.
     if (eventq.curr_time() == last_tick) {
-        dbg() << "WARN: double tick! curr_time=" << eventq.curr_time()
-              << ", last_tick=" << last_tick << std::endl;
+        // dbg() << "WARN: double tick! curr_time=" << eventq.curr_time()
+        //       << ", last_tick=" << last_tick << std::endl;
         stat.double_tick_count++;
         return;
     }
@@ -241,8 +281,10 @@ void Router::source_generate() {
               (std::get<SrcId>(id).id + 2) % 4, flit_payload_counter};
     if (flit_payload_counter == 0) {
         flit.type = Flit::Type::Head;
+        flit.route_info.path = source_route_compute(
+            top_desc, flit.route_info.src, flit.route_info.dst);
         flit_payload_counter++;
-    } else if (flit_payload_counter == 4 /* FIXME */) {
+    } else if (flit_payload_counter == 3 /* FIXME */) {
         flit.type = Flit::Type::Tail;
         flit_payload_counter = 0;
     } else {
@@ -293,6 +335,7 @@ void Router::fetch_flit() {
         auto &ich = input_channels[iport].get();
         auto &iu = input_units[iport];
         auto flit_opt = ich.get();
+
         if (flit_opt) {
             dbg() << "Fetched flit " << flit_opt.value()
                   << ", buf.size()=" << iu.buf.size() << std::endl;
@@ -382,29 +425,34 @@ void Router::route_compute() {
         auto &iu = input_units[port];
 
         if (iu.global == InputUnit::GlobalState::Routing) {
-            auto flit = iu.buf.front();
+            auto &flit = iu.buf.front();
             dbg() << flit << " route computation\n";
             assert(!iu.buf.empty());
 
             // TODO: Simple algorithmic routing: keep rotating clockwise until
             // destination is met.
-            if (flit.route_info.dst == std::get<RtrId>(id).id) {
-                // Port 0 is always connected to a terminal node
-                iu.route_port = 0;
-            } else {
-                int total = 4; /* FIXME: hardcoded */
-                int cw_dist =
-                    (flit.route_info.dst - flit.route_info.src + total) % total;
-                if (cw_dist <= total / 2) {
-                    // Clockwise is better
-                    iu.route_port = 2;
-                } else {
-                    // TODO: if CW == CCW, pick random
-                    iu.route_port = 1;
-                }
-            }
+            // if (flit.route_info.dst == std::get<RtrId>(id).id) {
+            //     // Port 0 is always connected to a terminal node
+            //     iu.route_port = 0;
+            // } else {
+            //     int total = 4; /* FIXME: hardcoded */
+            //     int cw_dist =
+            //         (flit.route_info.dst - flit.route_info.src + total) % total;
+            //     if (cw_dist <= total / 2) {
+            //         // Clockwise is better
+            //         iu.route_port = 2;
+            //     } else {
+            //         // TODO: if CW == CCW, pick random
+            //         iu.route_port = 1;
+            //     }
+            // }
 
-            dbg() << flit << " RC success (oport=" << iu.route_port << ")\n";
+            assert(flit.route_info.idx < flit.route_info.path.size());
+            dbg() << "RC: path size = " << flit.route_info.path.size() << std::endl;
+            iu.route_port = flit.route_info.path[flit.route_info.idx];
+            dbg() << flit << " RC success (idx=" << flit.route_info.idx
+                  << ", oport=" << iu.route_port << ")\n";
+            flit.route_info.idx++;
 
             // RC -> VA transition
             iu.next_global = InputUnit::GlobalState::VCWait;
@@ -418,6 +466,24 @@ void Router::route_compute() {
 int Router::vc_arbit_round_robin(int out_port) {
     int iport = (va_last_grant_input + 1) % get_radix();
 
+    std::vector<int> v;
+
+    for (int i = 0; i < get_radix(); i++) {
+        auto &iu = input_units[i];
+
+        if (iu.global == InputUnit::GlobalState::VCWait &&
+            iu.route_port == out_port) {
+            v.push_back(i);
+        }
+    }
+    if (!v.empty()) {
+        dbg() << "VA: competing for oport " << out_port << " from iports {";
+        for (auto i : v) {
+            std::cout << i << ",";
+        }
+        std::cout << "}\n";
+    }
+
     for (int i = 0; i < get_radix(); i++) {
         auto &iu = input_units[iport];
 
@@ -425,7 +491,6 @@ int Router::vc_arbit_round_robin(int out_port) {
             iu.route_port == out_port) {
             // XXX: is VA stage and VCWait state the same?
             assert(iu.stage == PipelineStage::VA);
-            dbg() << "VA: granted oport " << out_port << " to iport " << iport << std::endl;
             va_last_grant_input = iport;
             return iport;
         }
@@ -446,8 +511,8 @@ int Router::sa_arbit_round_robin(int out_port) {
 
         if (iu.stage == PipelineStage::SA && iu.route_port == out_port &&
             iu.global == InputUnit::GlobalState::Active) {
-            dbg() << "SA: granted oport " << out_port << " to iport " << iport
-                  << std::endl;
+            // dbg() << "SA: granted oport " << out_port << " to iport " << iport
+            //       << std::endl;
             sa_last_grant_input = iport;
             return iport;
         } else if (iu.stage == PipelineStage::SA &&
@@ -476,14 +541,17 @@ void Router::vc_alloc() {
             int iport = vc_arbit_round_robin(oport);
 
             if (iport == -1) {
-                dbg() << "no pending VC request!\n";
+                // dbg() << "no pending VC request for oport=" << oport << std::endl;
             } else {
                 auto &iu = input_units[iport];
+
+                dbg() << "VA: success for " << iu.buf.front() << " from iport "
+                      << iport << " to oport " << oport << std::endl;
 
                 // We now have the VC, but we cannot proceed to the SA stage if
                 // there is no credit.
                 if (ou.credit_count == 0) {
-                    dbg() << "VA: switching to CW\n";
+                    dbg() << "VA: no credit, switching to CreditWait\n";
                     iu.next_global =
                         InputUnit::GlobalState::CreditWait;
                     ou.next_global =
@@ -500,8 +568,6 @@ void Router::vc_alloc() {
 
                 iu.stage = PipelineStage::SA;
                 mark_reschedule();
-
-                dbg() << "VA success for " << iu.buf.front() << " to port " << oport << std::endl;
             }
         }
     }
@@ -521,6 +587,9 @@ void Router::switch_alloc() {
             } else {
                 // SA success!
                 auto &iu = input_units[iport];
+
+                dbg() << "SA success for " << iu.buf.front() << " from iport "
+                      << iport << " to oport " << oport << std::endl;
 
                 // Input units in the active state *may* be empty, e.g. if
                 // their body flits have not yet arrived.  Check that.

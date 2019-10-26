@@ -16,6 +16,8 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
         channel_map.insert({conn, ch});
     }
 
+    TopoDesc td{TopoType::Torus, 4, 1};
+
     // Initialize terminal nodes
     for (int id = 0; id < terminal_count; id++) {
         // Terminal nodes only have a single port.  Also, destination nodes
@@ -37,10 +39,10 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
         src_output_channels.push_back(src_output_channel);
         dst_input_channels.push_back(dst_input_channel);
 
-        src_nodes.emplace_back(eventq, stat, SrcId{id}, 1, src_input_channels,
-                               src_output_channels);
-        dst_nodes.emplace_back(eventq, stat, DstId{id}, 1, dst_input_channels,
-                               dst_output_channels);
+        src_nodes.emplace_back(eventq, stat, td, SrcId{id}, 1,
+                               src_input_channels, src_output_channels);
+        dst_nodes.emplace_back(eventq, stat, td, DstId{id}, 1,
+                               dst_input_channels, dst_output_channels);
     }
 
     // Initialize router nodes
@@ -61,7 +63,7 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
             input_channels.push_back(input_channel);
         }
 
-        routers.emplace_back(eventq, stat, RtrId{id}, radix, input_channels,
+        routers.emplace_back(eventq, stat, td, RtrId{id}, radix, input_channels,
                              output_channels);
     }
 }
