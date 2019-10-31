@@ -277,15 +277,15 @@ void Router::source_generate() {
     }
 
     // TODO: All flits go to node #2!
-    Flit flit{Flit::Type::Body, std::get<SrcId>(id).id,
+    Flit flit{FLIT_BODY, std::get<SrcId>(id).id,
               (std::get<SrcId>(id).id + 2) % 4, flit_payload_counter};
     if (flit_payload_counter == 0) {
-        flit.type = Flit::Type::Head;
+        flit.type = FLIT_HEAD ;
         flit.route_info.path = source_route_compute(
             top_desc, flit.route_info.src, flit.route_info.dst);
         flit_payload_counter++;
     } else if (flit_payload_counter == 3 /* FIXME */) {
-        flit.type = Flit::Type::Tail;
+        flit.type = FLIT_TAIL;
         flit_payload_counter = 0;
     } else {
         flit_payload_counter++;
@@ -614,7 +614,7 @@ void Router::switch_alloc() {
                 // subsequent ST to happen. The flit that has succeeded SA on
                 // this cycle is transferred to iu.st_ready, and that is the
                 // only thing that is visible to the ST stage.
-                if (flit.type == Flit::Type::Tail) {
+                if (flit.type == FLIT_TAIL) {
                     ou.next_global = STATE_IDLE;
                     if (iu.buf.empty()) {
                         iu.next_global = STATE_IDLE;

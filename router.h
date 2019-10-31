@@ -71,27 +71,28 @@ struct TopoDesc {
 /// Source-side all-in-one route computation.
 std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id);
 
+enum FlitType {
+    FLIT_HEAD,
+    FLIT_BODY,
+    FLIT_TAIL,
+};
+
 /// Flit and credit encoding.
 /// Follows Fig. 16.13.
 class Flit {
 public:
-    enum class Type {
-        Head,
-        Body,
-        Tail,
-    };
 
-    Flit(Type t, int src, int dst, long p) : type(t), payload(p) {
+    Flit(FlitType t, int src, int dst, long p) : type(t), payload(p) {
         route_info.src = src;
         route_info.dst = dst;
     }
 
-    Type type;
+    FlitType type;
     struct RouteInfo {
         int src;    // source node ID
         int dst{3}; // destination node ID
         std::vector<int> path;
-        int idx{0};
+        size_t idx{0};
     } route_info; // only contained in the head flit
     long payload;
 };
