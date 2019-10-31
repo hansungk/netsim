@@ -130,6 +130,14 @@ using ChannelRefVec = std::vector<std::reference_wrapper<Channel>>;
 // Custom printer for Flit
 std::ostream &operator<<(std::ostream &out, const Flit &flit);
 
+enum GlobalState {
+    STATE_IDLE,
+    STATE_ROUTING,
+    STATE_VCWAIT,
+    STATE_ACTIVE,
+    STATE_CREDWAIT,
+};
+
 /// A node.  Despite its name, it can represent any of a router node, a source
 /// node and a destination node.
 class Router {
@@ -175,15 +183,8 @@ public:
 
 public:
     struct InputUnit {
-        enum class GlobalState {
-            Idle,
-            Routing,
-            VCWait,
-            Active,
-            CreditWait,
-        };
-        GlobalState global{GlobalState::Idle};
-        GlobalState next_global{GlobalState::Idle};
+        GlobalState global{STATE_IDLE};
+        GlobalState next_global{STATE_IDLE};
         int route_port{-1};
         int output_vc{0};
         // credit count is omitted; it can be found in the output
@@ -195,13 +196,9 @@ public:
 
     struct OutputUnit {
         OutputUnit(long bufsize) { credit_count = bufsize; }
-        enum class GlobalState {
-            Idle,
-            Active,
-            CreditWait,
-        };
-        GlobalState global{GlobalState::Idle};
-        GlobalState next_global{GlobalState::Idle};
+
+      GlobalState global{STATE_IDLE};
+        GlobalState next_global{STATE_IDLE};
         int input_port{-1};
         int input_vc{0};
         int credit_count; // FIXME: hardcoded
@@ -223,7 +220,7 @@ private:
     void do_reschedule();
 
 private:
-    EventQueue &eventq;     // reference to the simulator-global event queue
+    EventQueue &eventq; // reference to the simulator-global event queue
     Stat &stat;
     const TopoDesc top_desc;
     const Event tick_event; // self-tick event.

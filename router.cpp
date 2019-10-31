@@ -346,9 +346,9 @@ void Router::fetch_flit() {
                 dbg() << "fetch_flit: buf was empty\n";
                 // If the input unit state was also idle (empty != idle!), set
                 // the stage to RC.
-                if (iu.next_global == InputUnit::GlobalState::Idle) {
+                if (iu.next_global == STATE_IDLE) {
                     // Idle -> RC transition
-                    iu.next_global = InputUnit::GlobalState::Routing;
+                    iu.next_global = STATE_ROUTING;
                     iu.stage = PipelineStage::RC;
                 }
 
@@ -395,14 +395,10 @@ void Router::credit_update() {
             assert(ou.input_port != -1); // XXX: redundant?
             auto &iu = input_units[ou.input_port];
             if (ou.credit_count == 0) {
-                if (ou.next_global ==
-                    OutputUnit::GlobalState::CreditWait) {
-                    assert(iu.next_global ==
-                           InputUnit::GlobalState::CreditWait);
-                    iu.next_global =
-                        InputUnit::GlobalState::Active;
-                    ou.next_global =
-                        OutputUnit::GlobalState::Active;
+                if (ou.next_global == STATE_CREDWAIT) {
+                    assert(iu.next_global == STATE_CREDWAIT);
+                    iu.next_global = STATE_ACTIVE;
+                    ou.next_global = STATE_ACTIVE;
                 }
                 mark_reschedule();
                 dbg() << "credit update with kickstart! (iport="
@@ -424,7 +420,7 @@ void Router::route_compute() {
     for (int port = 0; port < get_radix(); port++) {
         auto &iu = input_units[port];
 
-        if (iu.global == InputUnit::GlobalState::Routing) {
+        if (iu.global == STATE_ROUTING) {
             auto &flit = iu.buf.front();
             dbg() << flit << " route computation\n";
             assert(!iu.buf.empty());
@@ -455,7 +451,7 @@ void Router::route_compute() {
             flit.route_info.idx++;
 
             // RC -> VA transition
-            iu.next_global = InputUnit::GlobalState::VCWait;
+            iu.next_global = STATE_VCWAIT;
             iu.stage = PipelineStage::VA;
             mark_reschedule();
         }
@@ -471,7 +467,7 @@ int Router::vc_arbit_round_robin(int out_port) {
     for (int i = 0; i < get_radix(); i++) {
         auto &iu = input_units[i];
 
-        if (iu.global == InputUnit::GlobalState::VCWait &&
+        if (iu.global == STATE_VCWAIT &&
             iu.route_port == out_port) {
             v.push_back(i);
         }
@@ -487,7 +483,7 @@ int Router::vc_arbit_round_robin(int out_port) {
     for (int i = 0; i < get_radix(); i++) {
         auto &iu = input_units[iport];
 
-        if (iu.global == InputUnit::GlobalState::VCWait &&
+        if (iu.global == STATE_VCWAIT &&
             iu.route_port == out_port) {
             // XXX: is VA stage and VCWait state the same?
             assert(iu.stage == PipelineStage::VA);
@@ -510,15 +506,13 @@ int Router::sa_arbit_round_robin(int out_port) {
         auto &iu = input_units[iport];
 
         if (iu.stage == PipelineStage::SA && iu.route_port == out_port &&
-            iu.global == InputUnit::GlobalState::Active) {
+            iu.global == STATE_ACTIVE) {
             // dbg() << "SA: granted oport " << out_port << " to iport " << iport
             //       << std::endl;
             sa_last_grant_input = iport;
             return iport;
-        } else if (iu.stage == PipelineStage::SA &&
-                   iu.route_port == out_port &&
-                   iu.global ==
-                       InputUnit::GlobalState::CreditWait) {
+        } else if (iu.stage == PipelineStage::SA && iu.route_port == out_port &&
+                   iu.global == STATE_CREDWAIT) {
             dbg() << "Credit stall! port=" << iu.route_port << std::endl;
         }
 
@@ -536,7 +530,7 @@ void Router::vc_alloc() {
         auto &ou = output_units[oport];
 
         // Only do arbitration for inactive output VCs.
-        if (ou.global == OutputUnit::GlobalState::Idle) {
+        if (ou.global == STATE_IDLE) {
             // Arbitration
             int iport = vc_arbit_round_robin(oport);
 
@@ -552,15 +546,11 @@ void Router::vc_alloc() {
                 // there is no credit.
                 if (ou.credit_count == 0) {
                     dbg() << "VA: no credit, switching to CreditWait\n";
-                    iu.next_global =
-                        InputUnit::GlobalState::CreditWait;
-                    ou.next_global =
-                        OutputUnit::GlobalState::CreditWait;
+                    iu.next_global = STATE_CREDWAIT;
+                    ou.next_global = STATE_CREDWAIT;
                 } else {
-                    iu.next_global =
-                        InputUnit::GlobalState::Active;
-                    ou.next_global =
-                        OutputUnit::GlobalState::Active;
+                    iu.next_global = STATE_ACTIVE;
+                    ou.next_global = STATE_ACTIVE;
                 }
 
                 // Record the input port to the Output unit.
@@ -578,7 +568,7 @@ void Router::switch_alloc() {
         auto &ou = output_units[oport];
 
         // Only do arbitration for output VCs that has available credits.
-        if (ou.global == OutputUnit::GlobalState::Active) {
+        if (ou.global == STATE_ACTIVE) {
             // Arbitration
             int iport = sa_arbit_round_robin(oport);
 
@@ -601,14 +591,13 @@ void Router::switch_alloc() {
                 // The flit leaves the buffer here.
                 Flit flit = iu.buf.front();
                 dbg() << flit << " switch allocation success\n";
-                assert(iu.global == InputUnit::GlobalState::Active);
+                assert(iu.global == STATE_ACTIVE);
                 iu.buf.pop_front();
 
                 assert(!iu.st_ready.has_value()); // XXX: harsh
                 iu.st_ready = flit;
 
-                assert(ou.global ==
-                       OutputUnit::GlobalState::Active);
+                assert(ou.global == STATE_ACTIVE);
 
                 // Credit decrement
                 dbg() << "Credit decrement, credit=" << ou.credit_count
@@ -626,30 +615,25 @@ void Router::switch_alloc() {
                 // this cycle is transferred to iu.st_ready, and that is the
                 // only thing that is visible to the ST stage.
                 if (flit.type == Flit::Type::Tail) {
-                    ou.next_global = OutputUnit::GlobalState::Idle;
+                    ou.next_global = STATE_IDLE;
                     if (iu.buf.empty()) {
-                        iu.next_global =
-                            InputUnit::GlobalState::Idle;
+                        iu.next_global = STATE_IDLE;
                         iu.stage = PipelineStage::Idle;
                         dbg() << "SA: next state is Idle\n";
                     } else {
-                        iu.next_global =
-                            InputUnit::GlobalState::Routing;
+                        iu.next_global = STATE_ROUTING;
                         iu.stage = PipelineStage::RC;
                         dbg() << "SA: next state is Routing\n";
                     }
                     mark_reschedule();
                 } else if (ou.credit_count == 0) {
                     dbg() << "SA: switching to CW\n";
-                    iu.next_global =
-                        InputUnit::GlobalState::CreditWait;
-                    ou.next_global =
-                        OutputUnit::GlobalState::CreditWait;
+                    iu.next_global = STATE_CREDWAIT;
+                    ou.next_global = STATE_CREDWAIT;
                     dbg() << "SA: next state is CreditWait\n";
                     mark_reschedule();
                 } else {
-                    iu.next_global =
-                        InputUnit::GlobalState::Active;
+                    iu.next_global = STATE_ACTIVE;
                     iu.stage = PipelineStage::SA;
                     dbg() << "SA: next state is Active\n";
                     mark_reschedule();
@@ -703,9 +687,7 @@ void Router::update_states() {
             changed = true;
         }
         if (ou.global != ou.next_global) {
-            if (ou.next_global ==
-                    OutputUnit::GlobalState::CreditWait &&
-                ou.credit_count > 0) {
+            if (ou.next_global == STATE_CREDWAIT && ou.credit_count > 0) {
                 assert(false);
             }
             ou.global = ou.next_global;
