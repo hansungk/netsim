@@ -37,8 +37,8 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
 
     RouterPortPair src_rpp = {src_id(id), 0};
     RouterPortPair dst_rpp = {dst_id(id), 0};
-    Connection src_conn = topology.find_forward(src_rpp);
-    Connection dst_conn = topology.find_reverse(dst_rpp);
+    Connection src_conn = conn_find_forward(&top, src_rpp);
+    Connection dst_conn = conn_find_reverse(&top, dst_rpp);
     assert(src_conn.src.port != -1);
     assert(dst_conn.src.port != -1);
     auto src_out_ch_it = channel_map.find(src_conn);
@@ -64,8 +64,8 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
 
     for (int port = 0; port < radix; port++) {
       RouterPortPair rpp = {rtr_id(id), port};
-      Connection output_conn = topology.find_forward(rpp);
-      Connection input_conn = topology.find_reverse(rpp);
+      Connection output_conn = conn_find_forward(&top, rpp);
+      Connection input_conn = conn_find_reverse(&top, rpp);
       assert(output_conn.src.port != -1);
       assert(input_conn.src.port != -1);
       auto out_ch_it = channel_map.find(output_conn);

@@ -50,65 +50,45 @@ std::optional<Credit> Channel::get_credit() {
     }
 }
 
-Topology::Topology(
-    std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs)
+Topology topology_create(void) {
+  return (Topology){
+      .forward_hash = NULL,
+      .reverse_hash = NULL,
+  };
+}
+
+void topology_destroy(Topology *top)
 {
-  forward_hash = NULL;
-  reverse_hash = NULL;
-
-  for (auto [src, dst] : pairs) {
-    if (!connect(src, dst)) {
-      // TODO: fail gracefully
-      std::cerr << "fatal: connectivity error" << std::endl;
-      exit(EXIT_FAILURE);
-    }
-  }
+  hmfree(top->forward_hash);
+  hmfree(top->reverse_hash);
 }
 
-Topology Topology::ring(int n) {
-    Topology top;
-    std::vector<int> ids;
-    bool res = true;
-
-    for (int id = 0; id < n; id++) {
-        ids.push_back(id);
-    }
-
-    // Inter-router channels
-    res &= top.connect_ring(ids);
-    // Terminal node channels
-    res &= top.connect_terminals(ids);
-
-    assert(res);
-    return top;
-}
-
-bool Topology::connect(RouterPortPair input, RouterPortPair output)
+bool topology_connect(Topology *t, RouterPortPair input, RouterPortPair output)
 {
   size_t inkey = RPHASH(&input);
   size_t outkey = RPHASH(&output);
-  if (hmgeti(forward_hash, inkey) != -1 || hmgeti(reverse_hash, outkey) != -1) {
+  if (hmgeti(t->forward_hash, inkey) != -1 || hmgeti(t->reverse_hash, outkey) != -1) {
     // Bad connectivity: source or destination port is already connected
     return false;
   }
   Connection conn = (Connection){.src = input, .dst = output};
-  hmput(forward_hash, inkey, conn);
-  hmput(reverse_hash, outkey, conn);
-  assert(hmgeti(forward_hash, inkey) != -1);
+  hmput(t->forward_hash, inkey, conn);
+  hmput(t->reverse_hash, outkey, conn);
+  assert(hmgeti(t->forward_hash, inkey) != -1);
   return true;
 }
 
-bool Topology::connect_terminals(const std::vector<int> &ids) {
+bool topology_connect_terminals(Topology *t, const int *ids) {
     bool res = true;
 
-    for (auto id : ids) {
-      RouterPortPair src_port{src_id(id), 0};
-      RouterPortPair dst_port{dst_id(id), 0};
-      RouterPortPair rtr_port{rtr_id(id), 0};
+    for (int i = 0; i < arrlen(ids); i++) {
+      RouterPortPair src_port{src_id(ids[i]), 0};
+      RouterPortPair dst_port{dst_id(ids[i]), 0};
+      RouterPortPair rtr_port{rtr_id(ids[i]), 0};
 
       // Bidirectional channel
-      res &= connect(src_port, rtr_port);
-      res &= connect(rtr_port, dst_port);
+      res &= topology_connect(t, src_port, rtr_port);
+      res &= topology_connect(t, rtr_port, dst_port);
       if (!res)
         return false;
     }
@@ -117,29 +97,67 @@ bool Topology::connect_terminals(const std::vector<int> &ids) {
 }
 
 // Port usage: 0:terminal, 1:counter-clockwise, 2:clockwise
-bool Topology::connect_ring(const std::vector<int> &ids) {
+bool topology_connect_ring(Topology *t, const int *ids) {
     bool res = true;
 
-    for (size_t i = 0; i < ids.size(); i++) {
+    for (long i = 0; i < arrlen(ids); i++) {
         int l = ids[i];
-        int r = ids[(i + 1) % ids.size()];
+        int r = ids[(i + 1) % arrlen(ids)];
         RouterPortPair lport{rtr_id(l), 2};
         RouterPortPair rport{rtr_id(r), 1};
 
         // Bidirectional channel
-        res &= connect(lport, rport);
-        res &= connect(rport, lport);
-        if (!res) {
-            return false;
-        }
+        res &= topology_connect(t, lport, rport);
+        res &= topology_connect(t, rport, lport);
+        if (!res) return false;
     }
 
     return true;
 }
 
-std::ostream &operator<<(std::ostream &out, const Flit &flit) {
-    out << "{" << flit.route_info.src << "." << flit.payload << "}";
-    return out;
+Topology topology_ring(int n)
+{
+  Topology top = topology_create();
+  int *ids = NULL;
+  bool res = true;
+
+  for (int id = 0; id < n; id++)
+    arrput(ids, id);
+
+  // Inter-router channels
+  res &= topology_connect_ring(&top, ids);
+  // Terminal node channels
+  res &= topology_connect_terminals(&top, ids);
+  assert(res);
+
+  arrfree(ids);
+  return top;
+}
+
+Connection conn_find_forward(Topology *t, RouterPortPair out_port)
+{
+  size_t key = RPHASH(&out_port);
+  ptrdiff_t idx = hmgeti(t->forward_hash, key);
+  if (idx == -1)
+    return not_connected;
+  else
+    return t->forward_hash[idx].value;
+}
+
+Connection conn_find_reverse(Topology *t, RouterPortPair in_port)
+{
+  size_t key = RPHASH(&in_port);
+  ptrdiff_t idx = hmgeti(t->reverse_hash, key);
+  if (idx == -1)
+    return not_connected;
+  else
+    return t->reverse_hash[idx].value;
+}
+
+std::ostream &operator<<(std::ostream &out, const Flit &flit)
+{
+  out << "{" << flit.route_info.src << "." << flit.payload << "}";
+  return out;
 }
 
 static InputUnit input_unit_create(void) {

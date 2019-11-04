@@ -3,7 +3,7 @@
 #include <iostream>
 
 int main(void) {
-    auto top = Topology::ring(4);
+    Topology top = topology_ring(4);
 
     Sim sim{4, 4, 3, top};
     sim.eventq.schedule(0, sim.src_nodes[0].get_tick_event());
@@ -21,6 +21,8 @@ int main(void) {
     //                              }});
 
     sim.run(10000);
+
+    topology_destroy(&top);
 
     return 0;
 }

@@ -63,45 +63,20 @@ long id_hash(Id id);
 
 // Encodes channel connectivity in a bidirectional map.
 // Supports runtime checking for connectivity error.
-class Topology
-{
-public:
-  static Topology ring(int n);
-
-  Topology() = default;
-  Topology(std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);
-
-  Connection find_forward(RouterPortPair out_port)
-  {
-    size_t key = RPHASH(&out_port);
-    ptrdiff_t idx = hmgeti(forward_hash, key);
-    if (idx == -1)
-      return not_connected;
-    else
-      return forward_hash[idx].value;
-  }
-
-  Connection find_reverse(RouterPortPair in_port)
-  {
-    size_t key = RPHASH(&in_port);
-    ptrdiff_t idx = hmgeti(reverse_hash, key);
-    if (idx == -1)
-      return not_connected;
-    else
-      return reverse_hash[idx].value;
-  }
-
-  bool connect(RouterPortPair src, RouterPortPair dst);
-  bool connect_terminals(const std::vector<int> &ids);
-  bool connect_ring(const std::vector<int> &ids);
-
+struct Topology {
   ConnectionHash *forward_hash{NULL};
   ConnectionHash *reverse_hash{NULL};
 };
 
+Topology topology_ring(int n);
+void topology_destroy(Topology *top);
+
+Connection conn_find_forward(Topology *t, RouterPortPair out_port);
+Connection conn_find_reverse(Topology *t, RouterPortPair in_port);
+
 enum TopoType {
-    TOP_TORUS,
-    TOP_FCLOS,
+  TOP_TORUS,
+  TOP_FCLOS,
 };
 
 struct TopoDesc {

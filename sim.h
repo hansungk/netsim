@@ -22,7 +22,7 @@ public:
 
     EventQueue eventq{}; // global event queue
     Stat stat;
-    Topology &topology;
+    Topology topology;
     long channel_delay{1};
     std::map<Connection, Channel &> channel_map{};
     std::vector<Channel> channels{};
