@@ -1,4 +1,6 @@
 #include "router.h"
+#define STB_DS_IMPLEMENTATION
+#include "stb_ds.h"
 #include <cassert>
 #include <iomanip>
 #include <iostream>
@@ -349,7 +351,7 @@ void Router::fetch_flit() {
                 if (iu.next_global == STATE_IDLE) {
                     // Idle -> RC transition
                     iu.next_global = STATE_ROUTING;
-                    iu.stage = PipelineStage::RC;
+                    iu.stage = PIPELINE_RC;
                 }
 
                 mark_reschedule();
@@ -452,50 +454,46 @@ void Router::route_compute() {
 
             // RC -> VA transition
             iu.next_global = STATE_VCWAIT;
-            iu.stage = PipelineStage::VA;
+            iu.stage = PIPELINE_VA;
             mark_reschedule();
         }
     }
 }
 
 // This function expects the given output VC to be in the Idle state.
-int Router::vc_arbit_round_robin(int out_port) {
-    int iport = (va_last_grant_input + 1) % get_radix();
+int Router::vc_arbit_round_robin(int out_port)
+{
+  int iport = (va_last_grant_input + 1) % get_radix();
 
-    std::vector<int> v;
+  int *v = NULL;
+  for (int i = 0; i < get_radix(); i++) {
+    InputUnit *iu = &input_units[i];
+    if (iu->global == STATE_VCWAIT && iu->route_port == out_port)
+      arrput(v, i);
+  }
+  if (arrlen(v)) {
+    dbg() << "VA: competing for oport " << out_port << " from iports {";
+    for (int i = 0; i < arrlen(v); i++)
+      std::cout << v[i] << ",";
+    std::cout << "}\n";
+  }
+  arrfree(v);
 
-    for (int i = 0; i < get_radix(); i++) {
-        auto &iu = input_units[i];
+  for (int i = 0; i < get_radix(); i++) {
+    InputUnit *iu = &input_units[iport];
 
-        if (iu.global == STATE_VCWAIT &&
-            iu.route_port == out_port) {
-            v.push_back(i);
-        }
-    }
-    if (!v.empty()) {
-        dbg() << "VA: competing for oport " << out_port << " from iports {";
-        for (auto i : v) {
-            std::cout << i << ",";
-        }
-        std::cout << "}\n";
-    }
-
-    for (int i = 0; i < get_radix(); i++) {
-        auto &iu = input_units[iport];
-
-        if (iu.global == STATE_VCWAIT &&
-            iu.route_port == out_port) {
-            // XXX: is VA stage and VCWait state the same?
-            assert(iu.stage == PipelineStage::VA);
-            va_last_grant_input = iport;
-            return iport;
-        }
-
-        iport = (iport + 1) % get_radix();
+    if (iu->global == STATE_VCWAIT && iu->route_port == out_port) {
+      // XXX: is VA stage and VCWait state the same?
+      assert(iu->stage == PIPELINE_VA);
+      va_last_grant_input = iport;
+      return iport;
     }
 
-    // Indicates that there was no request for this VC.
-    return -1;
+    iport = (iport + 1) % get_radix();
+  }
+
+  // Indicates that there was no request for this VC.
+  return -1;
 }
 
 // This function expects the given output VC to be in the Idle state.
@@ -505,13 +503,13 @@ int Router::sa_arbit_round_robin(int out_port) {
     for (int i = 0; i < get_radix(); i++) {
         auto &iu = input_units[iport];
 
-        if (iu.stage == PipelineStage::SA && iu.route_port == out_port &&
+        if (iu.stage == PIPELINE_SA && iu.route_port == out_port &&
             iu.global == STATE_ACTIVE) {
             // dbg() << "SA: granted oport " << out_port << " to iport " << iport
             //       << std::endl;
             sa_last_grant_input = iport;
             return iport;
-        } else if (iu.stage == PipelineStage::SA && iu.route_port == out_port &&
+        } else if (iu.stage == PIPELINE_SA && iu.route_port == out_port &&
                    iu.global == STATE_CREDWAIT) {
             dbg() << "Credit stall! port=" << iu.route_port << std::endl;
         }
@@ -556,7 +554,7 @@ void Router::vc_alloc() {
                 // Record the input port to the Output unit.
                 ou.input_port = iport;
 
-                iu.stage = PipelineStage::SA;
+                iu.stage = PIPELINE_SA;
                 mark_reschedule();
             }
         }
@@ -619,11 +617,11 @@ void Router::switch_alloc() {
                     ou.next_global = STATE_IDLE;
                     if (iu.buf.empty()) {
                         iu.next_global = STATE_IDLE;
-                        iu.stage = PipelineStage::Idle;
+                        iu.stage = PIPELINE_IDLE;
                         dbg() << "SA: next state is Idle\n";
                     } else {
                         iu.next_global = STATE_ROUTING;
-                        iu.stage = PipelineStage::RC;
+                        iu.stage = PIPELINE_RC;
                         dbg() << "SA: next state is Routing\n";
                     }
                     mark_reschedule();
@@ -634,7 +632,7 @@ void Router::switch_alloc() {
                     dbg() << "SA: next state is CreditWait\n";
                 } else {
                     iu.next_global = STATE_ACTIVE;
-                    iu.stage = PipelineStage::SA;
+                    iu.stage = PIPELINE_SA;
                     dbg() << "SA: next state is Active\n";
                     mark_reschedule();
                 }

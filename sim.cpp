@@ -27,8 +27,8 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
         ChannelRefVec dst_input_channels;
         ChannelRefVec dst_output_channels; // empty
 
-        RouterPortPair src_rpp{SrcId{id}, 0};
-        RouterPortPair dst_rpp{DstId{id}, 0};
+        RouterPortPair src_rpp = {SrcId{id}, 0};
+        RouterPortPair dst_rpp = {DstId{id}, 0};
         auto src_downstream_input = topology.find_forward(src_rpp);
         auto dst_upstream_output = topology.find_reverse(dst_rpp);
         auto src_output_conn = std::pair{src_rpp, src_downstream_input};
@@ -51,7 +51,7 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
         ChannelRefVec output_channels;
 
         for (int port = 0; port < radix; port++) {
-            RouterPortPair rpp{RtrId{id}, port};
+            RouterPortPair rpp = {RtrId{id}, port};
             auto downstream_input = topology.find_forward(rpp);
             auto upstream_output = topology.find_reverse(rpp);
             auto output_conn = std::pair{rpp, downstream_input};

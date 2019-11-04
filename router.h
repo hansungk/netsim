@@ -81,7 +81,6 @@ enum FlitType {
 /// Follows Fig. 16.13.
 class Flit {
 public:
-
     Flit(FlitType t, int src, int dst, long p) : type(t), payload(p) {
         route_info.src = src;
         route_info.dst = dst;
@@ -139,109 +138,110 @@ enum GlobalState {
     STATE_CREDWAIT,
 };
 
+// Pipeline stages
+enum PipelineStage {
+  PIPELINE_IDLE,
+  PIPELINE_RC,
+  PIPELINE_VA,
+  PIPELINE_SA,
+  PIPELINE_ST,
+};
+
+struct InputUnit {
+  GlobalState global{STATE_IDLE};
+  GlobalState next_global{STATE_IDLE};
+  int route_port{-1};
+  int output_vc{0};
+  // credit count is omitted; it can be found in the output
+  // units instead.
+  PipelineStage stage{PIPELINE_IDLE};
+  std::deque<Flit> buf{};
+  std::optional<Flit> st_ready{};
+};
+
+struct OutputUnit {
+  OutputUnit(long bufsize) { credit_count = bufsize; }
+
+  GlobalState global{STATE_IDLE};
+  GlobalState next_global{STATE_IDLE};
+  int input_port{-1};
+  int input_vc{0};
+  int credit_count; // FIXME: hardcoded
+  // std::deque<Flit> buf;
+  std::optional<Credit> buf_credit;
+};
+
 /// A node.  Despite its name, it can represent any of a router node, a source
 /// node and a destination node.
-class Router {
+class Router
+{
 public:
-    Router(EventQueue &eq, Stat &st, TopoDesc td, Id id, int radix,
-           const ChannelRefVec &in_chs, const ChannelRefVec &out_chs);
-    // Router::tick_event captures pointer to 'this' in the Router's
-    // constructor. To prevent invalidating the 'this' pointer, we should
-    // disallow moving/copying of Router.
-    Router(const Router &) = delete;
-    Router(Router &&) = default;
+  Router(EventQueue &eq, Stat &st, TopoDesc td, Id id, int radix,
+         const ChannelRefVec &in_chs, const ChannelRefVec &out_chs);
+  // Router::tick_event captures pointer to 'this' in the Router's
+  // constructor. To prevent invalidating the 'this' pointer, we should disallow
+  // moving/copying of Router.
+  Router(const Router &) = delete;
+  Router(Router &&) = default;
 
-    // Tick event
-    void tick();
+  // Tick event
+  void tick();
 
-    // Pipeline stages
-    enum class PipelineStage {
-        Idle,
-        RC,
-        VA,
-        SA,
-        ST,
-    };
+  void source_generate();
+  void destination_consume();
+  void fetch_flit();
+  void fetch_credit();
+  void credit_update();
+  void route_compute();
+  void vc_alloc();
+  void switch_alloc();
+  void switch_traverse();
+  void update_states();
 
-    void source_generate();
-    void destination_consume();
-    void fetch_flit();
-    void fetch_credit();
-    void credit_update();
-    void route_compute();
-    void vc_alloc();
-    void switch_alloc();
-    void switch_traverse();
-    void update_states();
+  // Allocators and arbiters
+  int vc_arbit_round_robin(int out_port);
+  int sa_arbit_round_robin(int out_port);
 
-    // Allocators and arbiters
-    int vc_arbit_round_robin(int out_port);
-    int sa_arbit_round_robin(int out_port);
-
-    // Misc
-    const Event &get_tick_event() const { return tick_event; }
-    int get_radix() const { return input_units.size(); }
+  // Misc
+  const Event &get_tick_event() const { return tick_event; }
+  int get_radix() const { return input_units.size(); }
 
 public:
-    struct InputUnit {
-        GlobalState global{STATE_IDLE};
-        GlobalState next_global{STATE_IDLE};
-        int route_port{-1};
-        int output_vc{0};
-        // credit count is omitted; it can be found in the output
-        // units instead.
-        PipelineStage stage{PipelineStage::Idle};
-        std::deque<Flit> buf{};
-        std::optional<Flit> st_ready{};
-    };
-
-    struct OutputUnit {
-        OutputUnit(long bufsize) { credit_count = bufsize; }
-
-        GlobalState global{STATE_IDLE};
-        GlobalState next_global{STATE_IDLE};
-        int input_port{-1};
-        int input_vc{0};
-        int credit_count; // FIXME: hardcoded
-        // std::deque<Flit> buf;
-        std::optional<Credit> buf_credit;
-    };
-
-    Id id;                     // router ID
-    long flit_arrive_count{0}; // # of flits arrived for the destination node
-    long flit_gen_count{0};    // # of flits generated for the destination node
+  Id id;                     // router ID
+  long flit_arrive_count{0}; // # of flits arrived for the destination node
+  long flit_gen_count{0};    // # of flits generated for the destination node
 
 private:
-    // Debug output stream
-    std::ostream &dbg() const;
+  // Debug output stream
+  std::ostream &dbg() const;
 
-    // Mark self-reschedule on the next tick
-    void mark_reschedule() { reschedule_next_tick = true; }
-    void do_reschedule();
+  // Mark self-reschedule on the next tick
+  void mark_reschedule() { reschedule_next_tick = true; }
+  void do_reschedule();
 
 private:
-    EventQueue &eventq; // reference to the simulator-global event queue
-    Stat &stat;
-    const TopoDesc top_desc;
-    const Event tick_event; // self-tick event.
-    const size_t input_buf_size{100};
-    long last_tick{-1}; // record the last tick time to prevent double-tick in
-                        // single cycle
-    long last_reschedule_tick{-1}; // XXX: hacky?
-    long flit_payload_counter{0};  // for simple payload generation
-    bool reschedule_next_tick{
-        false}; // marks whether to self-tick at the next cycle
+  EventQueue &eventq; // reference to the simulator-global event queue
+  Stat &stat;
+  const TopoDesc top_desc;
+  const Event tick_event; // self-tick event.
+  const size_t input_buf_size{100};
+  long last_tick{-1}; // record the last tick time to prevent double-tick in
+                      // single cycle
+  long last_reschedule_tick{-1}; // XXX: hacky?
+  long flit_payload_counter{0};  // for simple payload generation
+  bool reschedule_next_tick{
+      false}; // marks whether to self-tick at the next cycle
 
-    const ChannelRefVec
-        input_channels; // references to the input channels for each port
-    const ChannelRefVec
-        output_channels; // references to the input channels for each port
-    std::vector<InputUnit> input_units;
-    std::vector<OutputUnit> output_units;
+  const ChannelRefVec
+      input_channels; // references to the input channels for each port
+  const ChannelRefVec
+      output_channels; // references to the input channels for each port
+  std::vector<InputUnit> input_units;
+  std::vector<OutputUnit> output_units;
 
-    // Allocator
-    int va_last_grant_input;
-    int sa_last_grant_input;
+  // Allocator
+  int va_last_grant_input;
+  int sa_last_grant_input;
 };
 
 #endif
