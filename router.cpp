@@ -315,7 +315,6 @@ void Router::source_generate() {
         return;
     }
 
-    // TODO: All flits go to node #2!
     Flit flit{FLIT_BODY, id.value,
               (id.value + 2) % 4, flit_payload_counter};
     if (flit_payload_counter == 0) {

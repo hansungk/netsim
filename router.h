@@ -17,11 +17,11 @@ struct RouterPortPair {
   int port;
   bool operator<(const RouterPortPair &b) const
   {
-    return (id.value < b.id.value) || (id.value == b.id.value && port < b.port);
+    return (id < b.id) || (id == b.id && port < b.port);
   }
   bool operator==(const RouterPortPair &b) const
   {
-    return id.value == b.id.value && port == b.port;
+    return id == b.id && port == b.port;
   }
 };
 

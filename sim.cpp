@@ -15,12 +15,11 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
   // Initialize channels
   for (ptrdiff_t i = 0; i < hmlen(top.forward_hash); i++) {
     Connection conn = top.forward_hash[i].value;
-    printf("Found connection: %d.%d.%d -> %d.%d.%d\n", conn.src.id.type, conn.src.id.value,
-           conn.src.port, conn.dst.id.type, conn.dst.id.value, conn.dst.port);
+    // printf("Found connection: %d.%d.%d -> %d.%d.%d\n", conn.src.id.type, conn.src.id.value,
+    //        conn.src.port, conn.dst.id.type, conn.dst.id.value, conn.dst.port);
     channels.emplace_back(eventq, channel_delay, conn.src, conn.dst);
   }
   for (auto &ch : channels) {
-    print_channel("inserting", &ch);
     auto conn = Connection{ch.src, ch.dst};
     channel_map.insert({conn, ch});
   }

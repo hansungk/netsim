@@ -15,6 +15,14 @@ enum IdType {
 struct Id {
   IdType type;
   int value;
+  bool operator<(const Id &b) const
+  {
+    return (type < b.type) || (type == b.type && value < b.value);
+  }
+  bool operator==(const Id &b) const
+  {
+    return type == b.type && value == b.value;
+  }
 };
 
 #define ID_HASH(id) (((id).type << (sizeof((id).value) * 8)) | (id).value)
