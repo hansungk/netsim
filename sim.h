@@ -24,7 +24,7 @@ public:
     Stat stat;
     Topology &topology;
     long channel_delay{1};
-    std::map<std::pair<RouterPortPair, RouterPortPair>, Channel &> channel_map{};
+    std::map<Connection, Channel &> channel_map{};
     std::vector<Channel> channels{};
     std::vector<Router> routers{};
     std::vector<Router> src_nodes{};

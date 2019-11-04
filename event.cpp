@@ -3,18 +3,14 @@
 #include <iostream>
 
 std::ostream &operator<<(std::ostream &out, const Id &id) {
-    int i;
-    if (std::holds_alternative<SrcId>(id)) {
+    if (is_src(id)) {
         out << "Src ";
-        i = std::get<SrcId>(id).id;
-    } else if (std::holds_alternative<DstId>(id)) {
+    } else if (is_dst(id)) {
         out << "Dst ";
-        i = std::get<DstId>(id).id;
     } else {
         out << "Rtr ";
-        i = std::get<RtrId>(id).id;
     }
-    out << i;
+    out << id.value;
     return out;
 }
 

@@ -6,37 +6,37 @@
 #include <iostream>
 #include <random>
 
-namespace {
-Event tick_event_from_id(Id id) {
+static Event tick_event_from_id(Id id) {
     return Event{id, [](Router &r) { r.tick(); }};
 }
-} // namespace
 
-Channel::Channel(EventQueue &eq, Id id_, const long dl, const RouterPortPair s,
+Channel::Channel(EventQueue &eq, const long dl, const RouterPortPair s,
                  const RouterPortPair d)
-    : src(s), dst(d), eventq(eq), delay(dl),
-      tick_event(tick_event_from_id(id_)) {}
+    : src(s), dst(d), eventq(eq), delay(dl)
+{
+}
 
 void Channel::put(const Flit &flit) {
     buf.push_back({eventq.curr_time() + delay, flit});
-    eventq.reschedule(delay, tick_event_from_id(dst.first));
+    eventq.reschedule(delay, tick_event_from_id(dst.id));
 }
 
 void Channel::put_credit(const Credit &credit) {
     buf_credit.push_back({eventq.curr_time() + delay, credit});
-    eventq.reschedule(delay, tick_event_from_id(src.first));
+    eventq.reschedule(delay, tick_event_from_id(src.id));
 }
 
-std::optional<Flit> Channel::get() {
-    auto front = buf.cbegin();
-    if (!buf.empty() && eventq.curr_time() >= front->first) {
-        assert(eventq.curr_time() == front->first && "stagnant flit!");
-        Flit flit = front->second;
-        buf.pop_front();
-        return flit;
-    } else {
-        return {};
-    }
+std::optional<Flit> Channel::get()
+{
+  auto front = buf.cbegin();
+  if (!buf.empty() && eventq.curr_time() >= front->first) {
+    assert(eventq.curr_time() == front->first && "stagnant flit!");
+    Flit flit = front->second;
+    buf.pop_front();
+    return flit;
+  } else {
+    return {};
+  }
 }
 
 std::optional<Credit> Channel::get_credit() {
@@ -51,14 +51,18 @@ std::optional<Credit> Channel::get_credit() {
 }
 
 Topology::Topology(
-    std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs) {
-    for (auto [src, dst] : pairs) {
-        if (!connect(src, dst)) {
-            // TODO: fail gracefully
-            std::cerr << "fatal: connectivity error" << std::endl;
-            exit(EXIT_FAILURE);
-        }
+    std::initializer_list<std::pair<RouterPortPair, RouterPortPair>> pairs)
+{
+  forward_hash = NULL;
+  reverse_hash = NULL;
+
+  for (auto [src, dst] : pairs) {
+    if (!connect(src, dst)) {
+      // TODO: fail gracefully
+      std::cerr << "fatal: connectivity error" << std::endl;
+      exit(EXIT_FAILURE);
     }
+  }
 }
 
 Topology Topology::ring(int n) {
@@ -79,30 +83,34 @@ Topology Topology::ring(int n) {
     return top;
 }
 
-bool Topology::connect(const RouterPortPair input,
-                       const RouterPortPair output) {
-    auto insert_success = forward_map.insert({input, output}).second;
-    if (!reverse_map.insert({output, input}).second) {
-        // Bad connectivity: destination port is already connected
-        return false;
-    }
-    return insert_success;
+bool Topology::connect(RouterPortPair input, RouterPortPair output)
+{
+  size_t inkey = RPHASH(&input);
+  size_t outkey = RPHASH(&output);
+  if (hmgeti(forward_hash, inkey) != -1 || hmgeti(reverse_hash, outkey) != -1) {
+    // Bad connectivity: source or destination port is already connected
+    return false;
+  }
+  Connection conn = (Connection){.src = input, .dst = output};
+  hmput(forward_hash, inkey, conn);
+  hmput(reverse_hash, outkey, conn);
+  assert(hmgeti(forward_hash, inkey) != -1);
+  return true;
 }
 
 bool Topology::connect_terminals(const std::vector<int> &ids) {
     bool res = true;
 
     for (auto id : ids) {
-        RouterPortPair src_port{SrcId{id}, 0};
-        RouterPortPair dst_port{DstId{id}, 0};
-        RouterPortPair rtr_port{RtrId{id}, 0};
+      RouterPortPair src_port{src_id(id), 0};
+      RouterPortPair dst_port{dst_id(id), 0};
+      RouterPortPair rtr_port{rtr_id(id), 0};
 
-        // Bidirectional channel
-        res &= connect(src_port, rtr_port);
-        res &= connect(rtr_port, dst_port);
-        if (!res) {
-            return false;
-        }
+      // Bidirectional channel
+      res &= connect(src_port, rtr_port);
+      res &= connect(rtr_port, dst_port);
+      if (!res)
+        return false;
     }
 
     return true;
@@ -115,8 +123,8 @@ bool Topology::connect_ring(const std::vector<int> &ids) {
     for (size_t i = 0; i < ids.size(); i++) {
         int l = ids[i];
         int r = ids[(i + 1) % ids.size()];
-        RouterPortPair lport{RtrId{l}, 2};
-        RouterPortPair rport{RtrId{r}, 1};
+        RouterPortPair lport{rtr_id(l), 2};
+        RouterPortPair rport{rtr_id(r), 1};
 
         // Bidirectional channel
         res &= connect(lport, rport);
@@ -134,6 +142,29 @@ std::ostream &operator<<(std::ostream &out, const Flit &flit) {
     return out;
 }
 
+static InputUnit input_unit_create(void) {
+  return (InputUnit){
+      .global = STATE_IDLE,
+      .next_global = STATE_IDLE,
+      .route_port = -1,
+      .output_vc = 0,
+      .stage = PIPELINE_IDLE,
+      .buf = std::deque<Flit>{},
+      .st_ready = std::optional<Flit>{},
+  };
+}
+
+static OutputUnit output_unit_create(int bufsize) {
+  return (OutputUnit){
+      .global = STATE_IDLE,
+      .next_global = STATE_IDLE,
+      .input_port = -1,
+      .input_vc = 0,
+      .credit_count = bufsize,
+      .buf_credit = std::optional<Credit>{},
+  };
+}
+
 Router::Router(EventQueue &eq, Stat &st, TopoDesc td, Id id_, int radix,
                const std::vector<Channel *> &in_chs,
                const std::vector<Channel *> &out_chs)
@@ -141,12 +172,16 @@ Router::Router(EventQueue &eq, Stat &st, TopoDesc td, Id id_, int radix,
       tick_event(tick_event_from_id(id_)), input_channels(in_chs),
       output_channels(out_chs)
 {
+  // input_units = NULL;
+  // output_units = NULL;
   for (int port = 0; port < radix; port++) {
-    input_units.emplace_back();
-    output_units.emplace_back(input_buf_size);
+    InputUnit iu = input_unit_create();
+    OutputUnit ou = output_unit_create(input_buf_size);
+    input_units.push_back(iu);
+    output_units.push_back(ou);
   }
 
-  if (is_source(id) || is_destination(id)) {
+  if (is_src(id) || is_dst(id)) {
     assert(input_units.size() == 1);
     assert(output_units.size() == 1);
     input_units[0].route_port = 0;
@@ -222,13 +257,13 @@ void Router::tick() {
     reschedule_next_tick = false;
 
     // Different tick actions for different types of node.
-    if (is_source(id)) {
+    if (is_src(id)) {
         source_generate();
         // Source nodes also needs to manage credit in order to send flits at
         // the right time.
         credit_update();
         fetch_credit();
-    } else if (is_destination(id)) {
+    } else if (is_dst(id)) {
         destination_consume();
         fetch_flit();
     } else {
@@ -281,8 +316,8 @@ void Router::source_generate() {
     }
 
     // TODO: All flits go to node #2!
-    Flit flit{FLIT_BODY, std::get<SrcId>(id).id,
-              (std::get<SrcId>(id).id + 2) % 4, flit_payload_counter};
+    Flit flit{FLIT_BODY, id.value,
+              (id.value + 2) % 4, flit_payload_counter};
     if (flit_payload_counter == 0) {
         flit.type = FLIT_HEAD ;
         flit.route_info.path = source_route_compute(
@@ -326,7 +361,7 @@ void Router::destination_consume() {
         in_ch->put_credit(Credit{});
 
         auto src_pair = in_ch->src;
-        dbg() << "Credit sent to {" << src_pair.first << ", " << src_pair.second
+        dbg() << "Credit sent to {" << src_pair.id << ", " << src_pair.port
               << "}\n";
 
         // Self-tick autonomously unless all input ports are empty.
@@ -659,8 +694,8 @@ void Router::switch_traverse() {
             Channel *out_ch = output_channels[iu->route_port];
             out_ch->put(flit);
             auto dst_pair = out_ch->dst;
-            dbg() << "Flit " << flit << " sent to {" << dst_pair.first << ", "
-                  << dst_pair.second << "}\n";
+            dbg() << "Flit " << flit << " sent to {" << dst_pair.id << ", "
+                  << dst_pair.port << "}\n";
 
             // With output speedup:
             // auto &ou = output_units[iu->route_port];
@@ -670,8 +705,8 @@ void Router::switch_traverse() {
             Channel *in_ch = input_channels[iport];
             in_ch->put_credit(Credit{});
             auto src_pair = in_ch->src;
-            dbg() << "Credit sent to {" << src_pair.first << ", "
-                  << src_pair.second << "}\n";
+            dbg() << "Credit sent to {" << src_pair.id << ", "
+                  << src_pair.port << "}\n";
         }
     }
 }

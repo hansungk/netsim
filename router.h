@@ -2,6 +2,7 @@
 #define ROUTER_H
 
 #include "event.h"
+#include "stb_ds.h"
 #include <deque>
 #include <iostream>
 #include <map>
@@ -11,50 +12,91 @@ struct Stat {
     long double_tick_count{0};
 };
 
-using RouterPortPair = std::pair<Id, int /*port*/>;
+struct RouterPortPair {
+  Id id;
+  int port;
+  bool operator<(const RouterPortPair &b) const
+  {
+    return (id.value < b.id.value) || (id.value == b.id.value && port < b.port);
+  }
+  bool operator==(const RouterPortPair &b) const
+  {
+    return id.value == b.id.value && port == b.port;
+  }
+};
+
+struct Connection {
+  RouterPortPair src;
+  RouterPortPair dst;
+  /* FIXME */
+  bool operator<(const Connection &b) const
+  {
+    return (src < b.src) || (src == b.src && dst < b.dst);
+  }
+  bool operator==(const Connection &b) const
+  {
+    return src == b.src && dst == b.dst;
+  }
+};
+
+struct ConnectionHash {
+  size_t key;
+  Connection value;
+};
+
+#define RPHASH(ptr) (stbds_hash_bytes(ptr, sizeof(RouterPortPair), 0))
+
+static const Connection not_connected = (Connection){
+    .src =
+        (RouterPortPair){
+            .id = (Id){.type = ID_RTR, .value = -1},
+            .port = -1,
+        },
+    .dst =
+        (RouterPortPair){
+            .id = (Id){.type = ID_RTR, .value = -1},
+            .port = -1,
+        },
+};
+
+long id_hash(Id id);
 
 // Encodes channel connectivity in a bidirectional map.
 // Supports runtime checking for connectivity error.
-class Topology {
+class Topology
+{
 public:
-    static constexpr RouterPortPair not_connected{RtrId{-1}, -1};
+  static Topology ring(int n);
 
-    static Topology ring(int n);
+  Topology() = default;
+  Topology(std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);
 
-    Topology() = default;
-    Topology(std::initializer_list<std::pair<RouterPortPair, RouterPortPair>>);
+  Connection find_forward(RouterPortPair out_port)
+  {
+    size_t key = RPHASH(&out_port);
+    ptrdiff_t idx = hmgeti(forward_hash, key);
+    if (idx == -1)
+      return not_connected;
+    else
+      return forward_hash[idx].value;
+  }
 
-    RouterPortPair find_forward(RouterPortPair out_port) {
-        auto it = forward_map.find(out_port);
-        if (it == forward_map.end()) {
-            return not_connected;
-        } else {
-            return it->second;
-        }
-    }
+  Connection find_reverse(RouterPortPair in_port)
+  {
+    size_t key = RPHASH(&in_port);
+    ptrdiff_t idx = hmgeti(reverse_hash, key);
+    if (idx == -1)
+      return not_connected;
+    else
+      return reverse_hash[idx].value;
+  }
 
-    RouterPortPair find_reverse(RouterPortPair in_port) {
-        auto it = reverse_map.find(in_port);
-        if (it == reverse_map.end()) {
-            return not_connected;
-        } else {
-            return it->second;
-        }
-    }
+  bool connect(RouterPortPair src, RouterPortPair dst);
+  bool connect_terminals(const std::vector<int> &ids);
+  bool connect_ring(const std::vector<int> &ids);
 
-    bool connect(const RouterPortPair src, const RouterPortPair dst);
-    bool connect_terminals(const std::vector<int> &ids);
-    bool connect_ring(const std::vector<int> &ids);
-
-    auto &get_forward_map() { return forward_map; }
-
-private:
-    std::map<RouterPortPair /* upstream output port */,
-             RouterPortPair /* downstream input port */>
-        forward_map;
-    std::map<RouterPortPair /* downstream input port */,
-             RouterPortPair /* upstream ouptut port */>
-        reverse_map;
+  ConnectionHash *forward_hash{NULL};
+  ConnectionHash *reverse_hash{NULL};
 };
 
 enum TopoType {
@@ -77,67 +119,57 @@ enum FlitType {
     FLIT_TAIL,
 };
 
+struct RouteInfo {
+  int src;    // source node ID
+  int dst{3}; // destination node ID
+  std::vector<int> path;
+  size_t idx{0};
+}; // only contained in the head flit
+
 /// Flit and credit encoding.
 /// Follows Fig. 16.13.
-class Flit {
-public:
-    Flit(FlitType t, int src, int dst, long p) : type(t), payload(p) {
-        route_info.src = src;
-        route_info.dst = dst;
-    }
+struct Flit
+{
+  Flit(FlitType t, int src, int dst, long p) : type(t), payload(p)
+  {
+    route_info.src = src;
+    route_info.dst = dst;
+  }
 
-    FlitType type;
-    struct RouteInfo {
-        int src;    // source node ID
-        int dst{3}; // destination node ID
-        std::vector<int> path;
-        size_t idx{0};
-    } route_info; // only contained in the head flit
-    long payload;
+  FlitType type;
+  RouteInfo route_info;
+  long payload;
 };
 
 std::ostream &operator<<(std::ostream &out, const Flit &flit);
 
-class Credit {
-public:
-    // VC is omitted, as we only have one VC per a physical channel.
+struct Credit {
+  // VC is omitted, as we only have one VC per a physical channel.
 };
 
-class Channel {
-public:
-    Channel(EventQueue &eq, Id id_, const long dl, const RouterPortPair s,
-            const RouterPortPair d);
+struct Channel
+{
+  Channel(EventQueue &eq, const long dl, const RouterPortPair s,
+          const RouterPortPair d);
 
-    void put(const Flit &flit);
-    void put_credit(const Credit &credit);
-    std::optional<Flit> get();
-    std::optional<Credit> get_credit();
+  void put(const Flit &flit);
+  void put_credit(const Credit &credit);
+  std::optional<Flit> get();
+  std::optional<Credit> get_credit();
 
-    RouterPortPair src;
-    RouterPortPair dst;
+  RouterPortPair src;
+  RouterPortPair dst;
 
-    Id id;
-
-private:
-    EventQueue &eventq;
-    const long delay;
-    const Event tick_event; // self-tick event.
-    std::deque<std::pair<long, Flit>> buf;
-    std::deque<std::pair<long, Credit>> buf_credit;
+  EventQueue &eventq;
+  const long delay;
+  std::deque<std::pair<long, Flit>> buf{};
+  std::deque<std::pair<long, Credit>> buf_credit{};
 };
 
-// Custom printer for Flit
+// Custom printer for Flit.
 std::ostream &operator<<(std::ostream &out, const Flit &flit);
 
-enum GlobalState {
-    STATE_IDLE,
-    STATE_ROUTING,
-    STATE_VCWAIT,
-    STATE_ACTIVE,
-    STATE_CREDWAIT,
-};
-
-// Pipeline stages
+// Pipeline stages.
 enum PipelineStage {
   PIPELINE_IDLE,
   PIPELINE_RC,
@@ -146,25 +178,32 @@ enum PipelineStage {
   PIPELINE_ST,
 };
 
+// Global states of each input/output unit.
+enum GlobalState {
+  STATE_IDLE,
+  STATE_ROUTING,
+  STATE_VCWAIT,
+  STATE_ACTIVE,
+  STATE_CREDWAIT,
+};
+
 struct InputUnit {
-  GlobalState global{STATE_IDLE};
-  GlobalState next_global{STATE_IDLE};
-  int route_port{-1};
-  int output_vc{0};
+  GlobalState global;
+  GlobalState next_global;
+  int route_port;
+  int output_vc;
   // credit count is omitted; it can be found in the output
   // units instead.
-  PipelineStage stage{PIPELINE_IDLE};
-  std::deque<Flit> buf{};
-  std::optional<Flit> st_ready{};
+  PipelineStage stage;
+  std::deque<Flit> buf;
+  std::optional<Flit> st_ready;
 };
 
 struct OutputUnit {
-  OutputUnit(long bufsize) { credit_count = bufsize; }
-
-  GlobalState global{STATE_IDLE};
-  GlobalState next_global{STATE_IDLE};
-  int input_port{-1};
-  int input_vc{0};
+  GlobalState global;
+  GlobalState next_global;
+  int input_port;
+  int input_vc;
   int credit_count; // FIXME: hardcoded
   // std::deque<Flit> buf;
   std::optional<Credit> buf_credit;
@@ -206,12 +245,6 @@ public:
   const Event &get_tick_event() const { return tick_event; }
   int get_radix() const { return input_units.size(); }
 
-public:
-  Id id;                     // router ID
-  long flit_arrive_count{0}; // # of flits arrived for the destination node
-  long flit_gen_count{0};    // # of flits generated for the destination node
-
-private:
   // Debug output stream
   std::ostream &dbg() const;
 
@@ -219,7 +252,11 @@ private:
   void mark_reschedule() { reschedule_next_tick = true; }
   void do_reschedule();
 
-private:
+public:
+  Id id;                     // router ID
+  long flit_arrive_count{0}; // # of flits arrived for the destination node
+  long flit_gen_count{0};    // # of flits generated for the destination node
+
   EventQueue &eventq; // reference to the simulator-global event queue
   Stat &stat;
   const TopoDesc top_desc;
@@ -232,14 +269,14 @@ private:
   bool reschedule_next_tick{
       false}; // marks whether to self-tick at the next cycle
 
-  std::vector<Channel *>
-      input_channels; // references to the input channels for each port
-  std::vector<Channel *>
-      output_channels; // references to the input channels for each port
+  // Pointers to the input/output channels for each port.
+  std::vector<Channel *> input_channels;
+  std::vector<Channel *> output_channels;
+  // Input/output units.
   std::vector<InputUnit> input_units;
   std::vector<OutputUnit> output_units;
 
-  // Allocator
+  // Allocator variables.
   int va_last_grant_input;
   int sa_last_grant_input;
 };

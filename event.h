@@ -6,10 +6,31 @@
 #include <variant>
 #include <iostream>
 
+enum IdType {
+  ID_SRC,
+  ID_DST,
+  ID_RTR,
+};
+
+struct Id {
+  IdType type;
+  int value;
+};
+
+#define ID_HASH(id) (((id).type << (sizeof((id).value) * 8)) | (id).value)
+
+inline bool is_src(Id id) { return id.type == ID_SRC; };
+inline bool is_dst(Id id) { return id.type == ID_DST; };
+inline bool is_rtr(Id id) { return id.type == ID_RTR; };
+
+static inline Id src_id(int id) { return (Id){.type = ID_SRC, .value = id}; }
+static inline Id dst_id(int id) { return (Id){.type = ID_DST, .value = id}; }
+static inline Id rtr_id(int id) { return (Id){.type = ID_RTR, .value = id}; }
+
 struct SrcId {
-    int id;
-    bool operator<(const SrcId &b) const { return id < b.id; }
-    bool operator==(const SrcId &b) const { return id == b.id; }
+  int id;
+  bool operator<(const SrcId &b) const { return id < b.id; }
+  bool operator==(const SrcId &b) const { return id == b.id; }
 };
 
 struct DstId {
@@ -30,13 +51,9 @@ struct ChId {
     bool operator==(const ChId &b) const { return id == b.id; }
 };
 
-using Id = std::variant<SrcId, DstId, RtrId, ChId>;
+// using Id = std::variant<SrcId, DstId, RtrId, ChId>;
 
 std::ostream &operator<<(std::ostream &out, const Id &id);
-
-inline bool is_source(Id id) { return std::holds_alternative<SrcId>(id); };
-inline bool is_destination(Id id) { return std::holds_alternative<DstId>(id); };
-inline bool is_router(Id id) { return std::holds_alternative<RtrId>(id); };
 
 class Router;
 
@@ -44,7 +61,7 @@ class Event {
 public:
     Event(Id i, std::function<void(Router &)> f_) : id(i), f(f_) {}
 
-    Id id;                       // target router ID
+    Id id;                           // target router ID
     std::function<void(Router &)> f; // callback on a specific router
 };
 
