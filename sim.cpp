@@ -16,7 +16,7 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
         channel_map.insert({conn, ch});
     }
 
-    TopoDesc td{TopoType::Torus, 4, 1};
+    TopoDesc td{TOP_TORUS, 4, 1};
 
     // Initialize terminal nodes
     for (int id = 0; id < terminal_count; id++) {
@@ -91,7 +91,7 @@ void Sim::report() const {
 
     for (auto &src : src_nodes) {
         std::cout << "[" << src.id << "] ";
-        std::cout << "# of flits generated: " << src.flit_generate_count << std::endl;
+        std::cout << "# of flits generated: " << src.flit_gen_count << std::endl;
     }
 
     for (auto &dst : dst_nodes) {

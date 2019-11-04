@@ -57,9 +57,9 @@ private:
         reverse_map;
 };
 
-enum class TopoType {
-    Torus,
-    FoldedClos,
+enum TopoType {
+    TOP_TORUS,
+    TOP_FCLOS,
 };
 
 struct TopoDesc {
@@ -198,7 +198,7 @@ public:
     struct OutputUnit {
         OutputUnit(long bufsize) { credit_count = bufsize; }
 
-      GlobalState global{STATE_IDLE};
+        GlobalState global{STATE_IDLE};
         GlobalState next_global{STATE_IDLE};
         int input_port{-1};
         int input_vc{0};
@@ -209,8 +209,7 @@ public:
 
     Id id;                     // router ID
     long flit_arrive_count{0}; // # of flits arrived for the destination node
-    long flit_generate_count{
-        0}; // # of flits generated for the destination node
+    long flit_gen_count{0};    // # of flits generated for the destination node
 
 private:
     // Debug output stream

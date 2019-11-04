@@ -229,10 +229,10 @@ void Router::tick() {
         fetch_flit();
     } else {
         // Process each pipeline stage.
-        // Stages are processed in reverse dependency order to prevent
-        // coherence bug.  E.g., if a flit succeeds in route_compute() and
-        // advances to the VA stage, and then vc_alloc() is called, it would
-        // then get processed again in the same cycle.
+        // Stages are processed in reverse dependency order to prevent coherence
+        // bug.  E.g., if a flit succeeds in route_compute() and advances to the
+        // VA stage, and then vc_alloc() is called, it would then get processed
+        // again in the same cycle.
         switch_traverse();
         switch_alloc();
         vc_alloc();
@@ -300,7 +300,7 @@ void Router::source_generate() {
     ou.credit_count--;
     assert(ou.credit_count >= 0);
 
-    flit_generate_count++;
+    flit_gen_count++;
     dbg() << flit << " Flit created and sent!\n";
 
     // TODO: for now, infinitely generate flits.
@@ -389,9 +389,9 @@ void Router::credit_update() {
             //
             // This can otherwise be implemented in the SA stage itself,
             // switching the stage to Active and simultaneously commencing to
-            // the switch allocation.  However, this implementation seems
-            // to defeat the purpose of the CreditWait stage. This
-            // implementation is what I think of as a more natural one.
+            // the switch allocation.  However, this implementation seems to
+            // defeat the purpose of the CreditWait stage. This implementation
+            // is what I think of as a more natural one.
             assert(ou.input_port != -1); // XXX: redundant?
             auto &iu = input_units[ou.input_port];
             if (ou.credit_count == 0) {
@@ -608,7 +608,8 @@ void Router::switch_alloc() {
 
                 // SA -> ?? transition
                 //
-                // Set the next stage according to the flit type and credit count.
+                // Set the next stage according to the flit type and credit
+                // count.
                 //
                 // Note that switching state to CreditWait does NOT prevent the
                 // subsequent ST to happen. The flit that has succeeded SA on
@@ -631,7 +632,6 @@ void Router::switch_alloc() {
                     iu.next_global = STATE_CREDWAIT;
                     ou.next_global = STATE_CREDWAIT;
                     dbg() << "SA: next state is CreditWait\n";
-                    mark_reschedule();
                 } else {
                     iu.next_global = STATE_ACTIVE;
                     iu.stage = PipelineStage::SA;
