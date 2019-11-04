@@ -126,7 +126,6 @@ private:
     std::deque<std::pair<long, Credit>> buf_credit;
 };
 
-using ChannelRefVec = std::vector<std::reference_wrapper<Channel>>;
 // Custom printer for Flit
 std::ostream &operator<<(std::ostream &out, const Flit &flit);
 
@@ -177,7 +176,8 @@ class Router
 {
 public:
   Router(EventQueue &eq, Stat &st, TopoDesc td, Id id, int radix,
-         const ChannelRefVec &in_chs, const ChannelRefVec &out_chs);
+         const std::vector<Channel *> &in_chs,
+         const std::vector<Channel *> &out_chs);
   // Router::tick_event captures pointer to 'this' in the Router's
   // constructor. To prevent invalidating the 'this' pointer, we should disallow
   // moving/copying of Router.
@@ -232,9 +232,9 @@ private:
   bool reschedule_next_tick{
       false}; // marks whether to self-tick at the next cycle
 
-  const ChannelRefVec
+  std::vector<Channel *>
       input_channels; // references to the input channels for each port
-  const ChannelRefVec
+  std::vector<Channel *>
       output_channels; // references to the input channels for each port
   std::vector<InputUnit> input_units;
   std::vector<OutputUnit> output_units;

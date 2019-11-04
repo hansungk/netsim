@@ -22,49 +22,48 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     for (int id = 0; id < terminal_count; id++) {
         // Terminal nodes only have a single port.  Also, destination nodes
         // doesn't have output ports!
-        ChannelRefVec src_input_channels; // empty
-        ChannelRefVec src_output_channels;
-        ChannelRefVec dst_input_channels;
-        ChannelRefVec dst_output_channels; // empty
+        std::vector<Channel *> src_in_chs; // empty
+        std::vector<Channel *> src_out_chs;
+        std::vector<Channel *> dst_in_chs;
+        std::vector<Channel *> dst_out_chs; // empty
 
         RouterPortPair src_rpp = {SrcId{id}, 0};
         RouterPortPair dst_rpp = {DstId{id}, 0};
-        auto src_downstream_input = topology.find_forward(src_rpp);
-        auto dst_upstream_output = topology.find_reverse(dst_rpp);
+        RouterPortPair src_downstream_input = topology.find_forward(src_rpp);
+        RouterPortPair dst_upstream_output = topology.find_reverse(dst_rpp);
         auto src_output_conn = std::pair{src_rpp, src_downstream_input};
         auto dst_input_conn = std::pair{dst_upstream_output, dst_rpp};
-        auto &src_output_channel = channel_map.find(src_output_conn)->second;
-        auto &dst_input_channel = channel_map.find(dst_input_conn)->second;
+        Channel *src_output_channel = &channel_map.find(src_output_conn)->second;
+        Channel *dst_input_channel = &channel_map.find(dst_input_conn)->second;
 
-        src_output_channels.push_back(src_output_channel);
-        dst_input_channels.push_back(dst_input_channel);
+        src_out_chs.push_back(src_output_channel);
+        dst_in_chs.push_back(dst_input_channel);
 
         src_nodes.emplace_back(eventq, stat, td, SrcId{id}, 1,
-                               src_input_channels, src_output_channels);
+                               src_in_chs, src_out_chs);
         dst_nodes.emplace_back(eventq, stat, td, DstId{id}, 1,
-                               dst_input_channels, dst_output_channels);
+                               dst_in_chs, dst_out_chs);
     }
 
     // Initialize router nodes
     for (int id = 0; id < router_count; id++) {
-        ChannelRefVec input_channels;
-        ChannelRefVec output_channels;
+      std::vector<Channel *> in_chs;
+      std::vector<Channel *> out_chs;
 
-        for (int port = 0; port < radix; port++) {
-            RouterPortPair rpp = {RtrId{id}, port};
-            auto downstream_input = topology.find_forward(rpp);
-            auto upstream_output = topology.find_reverse(rpp);
-            auto output_conn = std::pair{rpp, downstream_input};
-            auto input_conn = std::pair{upstream_output, rpp};
-            auto &output_channel = channel_map.find(output_conn)->second;
-            auto &input_channel = channel_map.find(input_conn)->second;
+      for (int port = 0; port < radix; port++) {
+        RouterPortPair rpp = {RtrId{id}, port};
+        RouterPortPair downstream_input = topology.find_forward(rpp);
+        RouterPortPair upstream_output = topology.find_reverse(rpp);
+        auto output_conn = std::pair{rpp, downstream_input};
+        auto input_conn = std::pair{upstream_output, rpp};
+        Channel *out_ch = &channel_map.find(output_conn)->second;
+        Channel *in_ch = &channel_map.find(input_conn)->second;
 
-            output_channels.push_back(output_channel);
-            input_channels.push_back(input_channel);
-        }
+        out_chs.push_back(out_ch);
+        in_chs.push_back(in_ch);
+      }
 
-        routers.emplace_back(eventq, stat, td, RtrId{id}, radix, input_channels,
-                             output_channels);
+      routers.emplace_back(eventq, stat, td, RtrId{id}, radix, in_chs, out_chs);
     }
 }
 
