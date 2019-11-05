@@ -8,7 +8,7 @@
 #include <optional>
 
 struct Stat {
-    long double_tick_count{0};
+  long double_tick_count{0};
 };
 
 struct RouterPortPair {
@@ -65,18 +65,18 @@ enum TopoType {
 };
 
 struct TopoDesc {
-    TopoType type;
-    int k; // side length for tori
-    int r; // dimension for tori
+  TopoType type;
+  int k; // side length for tori
+  int r; // dimension for tori
 };
 
 /// Source-side all-in-one route computation.
 int *source_route_compute(TopoDesc td, int src_id, int dst_id);
 
 enum FlitType {
-    FLIT_HEAD,
-    FLIT_BODY,
-    FLIT_TAIL,
+  FLIT_HEAD,
+  FLIT_BODY,
+  FLIT_TAIL,
 };
 
 struct RouteInfo {
@@ -192,6 +192,7 @@ struct Router
   // Misc
   const Event &get_tick_event() const { return tick_event; }
   int get_radix() const { return input_units.size(); }
+  // int get_radix() const { return arrlen(input_units); }
 
   // Debug output stream
   std::ostream &dbg() const;
@@ -222,6 +223,8 @@ struct Router
   // Input/output units.
   std::vector<InputUnit> input_units;
   std::vector<OutputUnit> output_units;
+  // InputUnit *input_units;
+  // OutputUnit *output_units;
 
   // Allocator variables.
   int va_last_grant_input;

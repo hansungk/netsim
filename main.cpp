@@ -1,5 +1,6 @@
 #include "sim.h"
 #include "router.h"
+#include "queue.h"
 #include <iostream>
 
 int main(void) {
@@ -24,6 +25,20 @@ int main(void) {
 
     sim_destroy(&sim);
     topology_destroy(&top);
+
+    int arr[4] = {0, 1, 2, 3};
+    Queue q = queue_create(4);
+    queue_put(&q, &arr[0]);
+    queue_put(&q, &arr[1]);
+    queue_put(&q, &arr[2]);
+    queue_put(&q, &arr[3]);
+    printf("len=%ld\n", queue_len(&q));
+    while (1) {
+      int *p = (int *)queue_pop(&q);
+      if (!p) break;
+      printf("*p=%d\n", *p);
+    }
+    queue_destroy(&q);
 
     return 0;
 }

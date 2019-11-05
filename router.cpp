@@ -223,11 +223,15 @@ Router::Router(EventQueue &eq, Stat &st, TopoDesc td, Id id_, int radix,
     OutputUnit ou = output_unit_create(input_buf_size);
     input_units.push_back(iu);
     output_units.push_back(ou);
+    // arrput(input_units, iu);
+    // arrput(output_units, ou);
   }
 
   if (is_src(id) || is_dst(id)) {
     assert(input_units.size() == 1);
     assert(output_units.size() == 1);
+    // assert(arrlen(input_units) == 1);
+    // assert(arrlen(output_units) == 1);
     input_units[0].route_port = 0;
     output_units[0].input_port = 0;
   }
