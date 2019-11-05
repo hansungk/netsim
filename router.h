@@ -80,11 +80,11 @@ enum FlitType {
 };
 
 struct RouteInfo {
-  int src;    // source node ID
-  int dst{3}; // destination node ID
-  int *path;
-  size_t idx{0};
-}; // only contained in the head flit
+  int src; // source node ID
+  int dst; // destination node ID
+  int *path; // series of output ports for this route
+  size_t idx;
+};
 
 /// Flit and credit encoding.
 /// Follows Fig. 16.13.
@@ -97,7 +97,6 @@ struct Flit
 
 Flit flit_create(FlitType t, int src, int dst, long p);
 void print_flit(const Flit *flit);
-std::ostream &operator<<(std::ostream &out, const Flit &flit);
 
 struct Credit {
   // VC is omitted, as we only have one VC per a physical channel.
@@ -118,9 +117,6 @@ struct Channel
   std::deque<std::pair<long, Flit>> buf{};
   std::deque<std::pair<long, Credit>> buf_credit{};
 };
-
-// Custom printer for Flit.
-std::ostream &operator<<(std::ostream &out, const Flit &flit);
 
 // Pipeline stages.
 enum PipelineStage {

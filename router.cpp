@@ -16,8 +16,9 @@ static void dprintf(Router *r, const char *fmt, ...)
   va_end(args);
 }
 
-static Event tick_event_from_id(Id id) {
-    return Event{id, [](Router &r) { r.tick(); }};
+static Event tick_event_from_id(Id id)
+{
+  return Event{id, [](Router &r) { r.tick(); }};
 }
 
 Channel::Channel(EventQueue &eq, const long dl, const Connection conn)
@@ -30,9 +31,10 @@ void Channel::put(const Flit &flit) {
   eventq.reschedule(delay, tick_event_from_id(conn.dst.id));
 }
 
-void Channel::put_credit(const Credit &credit) {
-    buf_credit.push_back({eventq.curr_time() + delay, credit});
-    eventq.reschedule(delay, tick_event_from_id(conn.src.id));
+void Channel::put_credit(const Credit &credit)
+{
+  buf_credit.push_back({eventq.curr_time() + delay, credit});
+  eventq.reschedule(delay, tick_event_from_id(conn.src.id));
 }
 
 std::optional<Flit> Channel::get()
@@ -48,15 +50,16 @@ std::optional<Flit> Channel::get()
   }
 }
 
-std::optional<Credit> Channel::get_credit() {
-    auto front = buf_credit.cbegin();
-    if (!buf_credit.empty() && eventq.curr_time() >= front->first) {
-        assert(eventq.curr_time() == front->first && "stagnant flit!");
-        buf_credit.pop_front();
-        return front->second;
-    } else {
-        return {};
-    }
+std::optional<Credit> Channel::get_credit()
+{
+  auto front = buf_credit.cbegin();
+  if (!buf_credit.empty() && eventq.curr_time() >= front->first) {
+    assert(eventq.curr_time() == front->first && "stagnant flit!");
+    buf_credit.pop_front();
+    return front->second;
+  } else {
+    return {};
+  }
 }
 
 void print_conn(const char *name, Connection conn)
@@ -97,41 +100,40 @@ bool topology_connect(Topology *t, RouterPortPair input, RouterPortPair output)
   return true;
 }
 
-bool topology_connect_terminals(Topology *t, const int *ids) {
-    bool res = true;
+bool topology_connect_terminals(Topology *t, const int *ids)
+{
+  bool res = true;
+  for (int i = 0; i < arrlen(ids); i++) {
+    RouterPortPair src_port{src_id(ids[i]), 0};
+    RouterPortPair dst_port{dst_id(ids[i]), 0};
+    RouterPortPair rtr_port{rtr_id(ids[i]), 0};
 
-    for (int i = 0; i < arrlen(ids); i++) {
-      RouterPortPair src_port{src_id(ids[i]), 0};
-      RouterPortPair dst_port{dst_id(ids[i]), 0};
-      RouterPortPair rtr_port{rtr_id(ids[i]), 0};
-
-      // Bidirectional channel
-      res &= topology_connect(t, src_port, rtr_port);
-      res &= topology_connect(t, rtr_port, dst_port);
-      if (!res)
-        return false;
-    }
-
-    return true;
+    // Bidirectional channel
+    res &= topology_connect(t, src_port, rtr_port);
+    res &= topology_connect(t, rtr_port, dst_port);
+    if (!res)
+      return false;
+  }
+  return true;
 }
 
 // Port usage: 0:terminal, 1:counter-clockwise, 2:clockwise
-bool topology_connect_ring(Topology *t, const int *ids) {
-    bool res = true;
+bool topology_connect_ring(Topology *t, const int *ids)
+{
+  bool res = true;
+  for (long i = 0; i < arrlen(ids); i++) {
+    int l = ids[i];
+    int r = ids[(i + 1) % arrlen(ids)];
+    RouterPortPair lport{rtr_id(l), 2};
+    RouterPortPair rport{rtr_id(r), 1};
 
-    for (long i = 0; i < arrlen(ids); i++) {
-        int l = ids[i];
-        int r = ids[(i + 1) % arrlen(ids)];
-        RouterPortPair lport{rtr_id(l), 2};
-        RouterPortPair rport{rtr_id(r), 1};
-
-        // Bidirectional channel
-        res &= topology_connect(t, lport, rport);
-        res &= topology_connect(t, rport, lport);
-        if (!res) return false;
-    }
-
-    return true;
+    // Bidirectional channel
+    res &= topology_connect(t, lport, rport);
+    res &= topology_connect(t, rport, lport);
+    if (!res)
+      return false;
+  }
+  return true;
 }
 
 Topology topology_ring(int n)
@@ -182,12 +184,6 @@ Flit flit_create(FlitType t, int src, int dst, long p)
 void print_flit(const Flit *flit)
 {
   printf("{%d.p%ld}", flit->route_info.src, flit->payload);
-}
-
-std::ostream &operator<<(std::ostream &out, const Flit &flit)
-{
-  out << "{" << flit.route_info.src << "." << flit.payload << "}";
-  return out;
 }
 
 static InputUnit input_unit_create(void) {
@@ -288,63 +284,64 @@ int *source_route_compute(TopoDesc td, int src_id, int dst_id)
   return path;
 }
 
-void Router::tick() {
-    // Make sure this router has not been already ticked in this cycle.
-    if (eventq.curr_time() == last_tick) {
-        // dbg() << "WARN: double tick! curr_time=" << eventq.curr_time()
-        //       << ", last_tick=" << last_tick << std::endl;
-        stat.double_tick_count++;
-        return;
-    }
-    // assert(eventq.curr_time() != last_tick);
+void Router::tick()
+{
+  // Make sure this router has not been already ticked in this cycle.
+  if (eventq.curr_time() == last_tick) {
+    // dbg() << "WARN: double tick! curr_time=" << eventq.curr_time()
+    //       << ", last_tick=" << last_tick << std::endl;
+    stat.double_tick_count++;
+    return;
+  }
+  // assert(eventq.curr_time() != last_tick);
 
-    reschedule_next_tick = false;
+  reschedule_next_tick = false;
 
-    // Different tick actions for different types of node.
-    if (is_src(id)) {
-        source_generate();
-        // Source nodes also needs to manage credit in order to send flits at
-        // the right time.
-        credit_update();
-        fetch_credit();
-    } else if (is_dst(id)) {
-        destination_consume();
-        fetch_flit();
-    } else {
-        // Process each pipeline stage.
-        // Stages are processed in reverse dependency order to prevent coherence
-        // bug.  E.g., if a flit succeeds in route_compute() and advances to the
-        // VA stage, and then vc_alloc() is called, it would then get processed
-        // again in the same cycle.
-        switch_traverse();
-        switch_alloc();
-        vc_alloc();
-        route_compute();
-        credit_update();
-        fetch_credit();
-        fetch_flit();
+  // Different tick actions for different types of node.
+  if (is_src(id)) {
+    source_generate();
+    // Source nodes also needs to manage credit in order to send flits at
+    // the right time.
+    credit_update();
+    fetch_credit();
+  } else if (is_dst(id)) {
+    destination_consume();
+    fetch_flit();
+  } else {
+    // Process each pipeline stage.
+    // Stages are processed in reverse dependency order to prevent coherence
+    // bug.  E.g., if a flit succeeds in route_compute() and advances to the
+    // VA stage, and then vc_alloc() is called, it would then get processed
+    // again in the same cycle.
+    switch_traverse();
+    switch_alloc();
+    vc_alloc();
+    route_compute();
+    credit_update();
+    fetch_credit();
+    fetch_flit();
 
-        // Self-tick autonomously unless all input ports are empty.
-        // FIXME: redundant?
-        // bool empty = true;
-        // for (int i = 0; i < get_radix(); i++) {
-        //     if (!input_units[i].buf.empty()) {
-        //         empty = false;
-        //         break;
-        //     }
-        // }
-        // if (!empty) {
-        //     mark_reschedule();
-        // }
-    }
+    // Self-tick autonomously unless all input ports are empty.
+    // FIXME: redundant?
+    // bool empty = true;
+    // for (int i = 0; i < get_radix(); i++) {
+    //     if (!input_units[i].buf.empty()) {
+    //         empty = false;
+    //         break;
+    //     }
+    // }
+    // if (!empty) {
+    //     mark_reschedule();
+    // }
+  }
 
-    // Update the global state of each input/output unit.
-    update_states();
+  // Update the global state of each input/output unit.
+  update_states();
 
-    // Do the rescheduling at here once to prevent flooding the event queue.
-    do_reschedule();
+  // Do the rescheduling at here once to prevent flooding the event queue.
+  do_reschedule();
 
-    last_tick = eventq.curr_time();
+  last_tick = eventq.curr_time();
 }
 
 ///
@@ -393,81 +390,84 @@ void Router::source_generate()
   mark_reschedule();
 }
 
-void Router::destination_consume() {
-    InputUnit *iu = &input_units[0];
+void Router::destination_consume()
+{
+  InputUnit *iu = &input_units[0];
 
-    if (!iu->buf.empty()) {
-      Flit flit = iu->buf.front();
-      dprintf(this, "Destination buf size=%zd\n", iu->buf.size());
-      dprintf(this, "Flit arrived: ");
-      print_flit(&flit);
-      printf("\n");
+  if (!iu->buf.empty()) {
+    Flit flit = iu->buf.front();
+    dprintf(this, "Destination buf size=%zd\n", iu->buf.size());
+    dprintf(this, "Flit arrived: ");
+    print_flit(&flit);
+    printf("\n");
 
-      // Destroy memories allocated to flit.
-      arrfree(flit.route_info.path);
+    // Destroy memories allocated to flit.
+    arrfree(flit.route_info.path);
 
-      flit_arrive_count++;
-      iu->buf.pop_front();
-      // assert(iu->buf.empty());
+    flit_arrive_count++;
+    iu->buf.pop_front();
+    // assert(iu->buf.empty());
 
-      Channel *in_ch = input_channels[0];
-      in_ch->put_credit(Credit{});
+    Channel *in_ch = input_channels[0];
+    in_ch->put_credit(Credit{});
 
-      auto src_pair = in_ch->conn.src;
-      dprintf(this, "Credit sent to {");
-      print_id(src_pair.id);
-      printf(", %d}\n", src_pair.port);
+    auto src_pair = in_ch->conn.src;
+    dprintf(this, "Credit sent to {");
+    print_id(src_pair.id);
+    printf(", %d}\n", src_pair.port);
 
-      // Self-tick autonomously unless all input ports are empty.
+    // Self-tick autonomously unless all input ports are empty.
+    mark_reschedule();
+  }
+}
+
+void Router::fetch_flit()
+{
+  for (int iport = 0; iport < get_radix(); iport++) {
+    Channel *ich = input_channels[iport];
+    InputUnit *iu = &input_units[iport];
+    auto flit_opt = ich->get();
+
+    if (flit_opt) {
+      dprintf(this, "Fetched flit ");
+      print_flit(&flit_opt.value());
+      printf(", buf.size()=%zd\n", iu->buf.size());
+
+      // If the buffer was empty, this is the only place to kickstart the
+      // pipeline.
+      if (iu->buf.empty()) {
+        dprintf(this, "fetch_flit: buf was empty\n");
+        // If the input unit state was also idle (empty != idle!), set
+        // the stage to RC.
+        if (iu->next_global == STATE_IDLE) {
+          // Idle -> RC transition
+          iu->next_global = STATE_ROUTING;
+          iu->stage = PIPELINE_RC;
+        }
+
+        mark_reschedule();
+      }
+
+      iu->buf.push_back(flit_opt.value());
+
+      assert(iu->buf.size() <= input_buf_size && "Input buffer overflow!");
+    }
+  }
+}
+
+void Router::fetch_credit()
+{
+  for (int oport = 0; oport < get_radix(); oport++) {
+    OutputUnit *ou = &output_units[oport];
+    Channel *och = output_channels[oport];
+    auto credit_opt = och->get_credit();
+
+    if (credit_opt) {
+      dprintf(this, "Fetched credit, oport=%d\n", oport);
+      ou->buf_credit = credit_opt.value();
       mark_reschedule();
     }
-}
-
-void Router::fetch_flit() {
-    for (int iport = 0; iport < get_radix(); iport++) {
-        Channel *ich = input_channels[iport];
-        InputUnit *iu = &input_units[iport];
-        auto flit_opt = ich->get();
-
-        if (flit_opt) {
-            dprintf(this, "Fetched flit ");
-            print_flit(&flit_opt.value());
-            printf(", buf.size()=%zd\n", iu->buf.size());
-
-            // If the buffer was empty, this is the only place to kickstart the
-            // pipeline.
-            if (iu->buf.empty()) {
-                dprintf(this, "fetch_flit: buf was empty\n");
-                // If the input unit state was also idle (empty != idle!), set
-                // the stage to RC.
-                if (iu->next_global == STATE_IDLE) {
-                    // Idle -> RC transition
-                    iu->next_global = STATE_ROUTING;
-                    iu->stage = PIPELINE_RC;
-                }
-
-                mark_reschedule();
-            }
-
-            iu->buf.push_back(flit_opt.value());
-
-            assert(iu->buf.size() <= input_buf_size && "Input buffer overflow!");
-        }
-    }
-}
-
-void Router::fetch_credit() {
-    for (int oport = 0; oport < get_radix(); oport++) {
-        OutputUnit *ou = &output_units[oport];
-        Channel *och = output_channels[oport];
-        auto credit_opt = och->get_credit();
-
-        if (credit_opt) {
-            dprintf(this, "Fetched credit, oport=%d\n", oport);
-            ou->buf_credit = credit_opt.value();
-            mark_reschedule();
-        }
-    }
+  }
 }
 
 void Router::credit_update()
@@ -515,9 +515,9 @@ void Router::route_compute() {
         InputUnit *iu = &input_units[port];
 
         if (iu->global == STATE_ROUTING) {
-            auto &flit = iu->buf.front();
+            Flit *flit = &iu->buf.front();
             dprintf(this, "Route computation: ");
-            print_flit(&flit);
+            print_flit(flit);
             printf("\n");
             assert(!iu->buf.empty());
 
@@ -539,13 +539,13 @@ void Router::route_compute() {
             //     }
             // }
 
-            assert(flit.route_info.idx < arrlenu(flit.route_info.path));
-            dprintf(this, "RC: path size = %zd\n", arrlen(flit.route_info.path));
-            iu->route_port = flit.route_info.path[flit.route_info.idx];
+            assert(flit->route_info.idx < arrlenu(flit->route_info.path));
+            dprintf(this, "RC: path size = %zd\n", arrlen(flit->route_info.path));
+            iu->route_port = flit->route_info.path[flit->route_info.idx];
             dprintf(this, "RC success for ");
-            print_flit(&flit);
-            printf(" (idx=%zu, oport=%d)\n", flit.route_info.idx, iu->route_port);
-            flit.route_info.idx++;
+            print_flit(flit);
+            printf(" (idx=%zu, oport=%d)\n", flit->route_info.idx, iu->route_port);
+            flit->route_info.idx++;
 
             // RC -> VA transition
             iu->next_global = STATE_VCWAIT;
@@ -592,28 +592,29 @@ int Router::vc_arbit_round_robin(int out_port)
 }
 
 // This function expects the given output VC to be in the Idle state.
-int Router::sa_arbit_round_robin(int out_port) {
-    int iport = (sa_last_grant_input + 1) % get_radix();
+int Router::sa_arbit_round_robin(int out_port)
+{
+  int iport = (sa_last_grant_input + 1) % get_radix();
 
-    for (int i = 0; i < get_radix(); i++) {
-        InputUnit *iu = &input_units[iport];
+  for (int i = 0; i < get_radix(); i++) {
+    InputUnit *iu = &input_units[iport];
 
-        if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
-            iu->global == STATE_ACTIVE) {
-            // dbg() << "SA: granted oport " << out_port << " to iport " << iport
-            //       << std::endl;
-            sa_last_grant_input = iport;
-            return iport;
-        } else if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
-                   iu->global == STATE_CREDWAIT) {
-            dprintf(this, "Credit stall! port=%d\n", iu->route_port);
-        }
-
-        iport = (iport + 1) % get_radix();
+    if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
+        iu->global == STATE_ACTIVE) {
+      // dbg() << "SA: granted oport " << out_port << " to iport " << iport
+      //       << std::endl;
+      sa_last_grant_input = iport;
+      return iport;
+    } else if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
+               iu->global == STATE_CREDWAIT) {
+      dprintf(this, "Credit stall! port=%d\n", iu->route_port);
     }
 
-    // Indicates that there was no request for this VC.
-    return -1;
+    iport = (iport + 1) % get_radix();
+  }
+
+  // Indicates that there was no request for this VC.
+  return -1;
 }
 
 void Router::vc_alloc()
@@ -658,150 +659,150 @@ void Router::vc_alloc()
   }
 }
 
-void Router::switch_alloc() {
-    for (int oport = 0; oport < get_radix(); oport++) {
-        OutputUnit *ou = &output_units[oport];
+void Router::switch_alloc()
+{
+  for (int oport = 0; oport < get_radix(); oport++) {
+    OutputUnit *ou = &output_units[oport];
 
-        // Only do arbitration for output VCs that has available credits.
-        if (ou->global == STATE_ACTIVE) {
-            // Arbitration
-            int iport = sa_arbit_round_robin(oport);
+    // Only do arbitration for output VCs that has available credits.
+    if (ou->global == STATE_ACTIVE) {
+      // Arbitration
+      int iport = sa_arbit_round_robin(oport);
 
-            if (iport == -1) {
-                // dbg() << "no pending SA request!\n";
-            } else {
-                // SA success!
-                InputUnit *iu = &input_units[iport];
-
-                dprintf(this, "SA success for ");
-                print_flit(&iu->buf.front());
-                printf(" from iport %d to oport %d\n", iport, oport);
-
-                // Input units in the active state *may* be empty, e.g. if
-                // their body flits have not yet arrived.  Check that.
-                assert(!iu->buf.empty());
-                // if (iu->buf.empty()) {
-                //     continue;
-                // }
-
-                // The flit leaves the buffer here.
-                Flit flit = iu->buf.front();
-
-                dprintf(this, "Switch allocation success: ");
-                print_flit(&flit);
-                printf("\n");
-
-                assert(iu->global == STATE_ACTIVE);
-                iu->buf.pop_front();
-
-                assert(!iu->st_ready.has_value()); // XXX: harsh
-                iu->st_ready = flit;
-
-                assert(ou->global == STATE_ACTIVE);
-
-                // Credit decrement
-                dprintf(this, "Credit decrement, credit=%d->%d (oport=%d)\n",
-                        ou->credit_count, ou->credit_count - 1, oport);
-                assert(ou->credit_count > 0);
-                ou->credit_count--;
-
-                // SA -> ?? transition
-                //
-                // Set the next stage according to the flit type and credit
-                // count.
-                //
-                // Note that switching state to CreditWait does NOT prevent the
-                // subsequent ST to happen. The flit that has succeeded SA on
-                // this cycle is transferred to iu->st_ready, and that is the
-                // only thing that is visible to the ST stage.
-                if (flit.type == FLIT_TAIL) {
-                    ou->next_global = STATE_IDLE;
-                    if (iu->buf.empty()) {
-                        iu->next_global = STATE_IDLE;
-                        iu->stage = PIPELINE_IDLE;
-                        dprintf(this, "SA: next state is Idle\n");
-                    } else {
-                        iu->next_global = STATE_ROUTING;
-                        iu->stage = PIPELINE_RC;
-                        dprintf(this, "SA: next state is Routing\n");
-                    }
-                    mark_reschedule();
-                } else if (ou->credit_count == 0) {
-                    dprintf(this, "SA: switching to CW\n");
-                    iu->next_global = STATE_CREDWAIT;
-                    ou->next_global = STATE_CREDWAIT;
-                    dprintf(this, "SA: next state is CreditWait\n");
-                } else {
-                    iu->next_global = STATE_ACTIVE;
-                    iu->stage = PIPELINE_SA;
-                    dprintf(this, "SA: next state is Active\n");
-                    mark_reschedule();
-                }
-                assert(ou->credit_count >= 0);
-            }
-        }
-    }
-}
-
-void Router::switch_traverse() {
-    for (int iport = 0; iport < get_radix(); iport++) {
+      if (iport == -1) {
+        // dbg() << "no pending SA request!\n";
+      } else {
+        // SA success!
         InputUnit *iu = &input_units[iport];
 
-        if (iu->st_ready.has_value()) {
-            Flit flit = iu->st_ready.value();
-            iu->st_ready.reset();
-            dprintf(this, "Switch traverse: ");
-            print_flit(&flit);
-            printf("\n");
+        dprintf(this, "SA success for ");
+        print_flit(&iu->buf.front());
+        printf(" from iport %d to oport %d\n", iport, oport);
 
-            // No output speedup: there is no need for an output buffer
-            // (Ch17.3).  Flits that exit the switch are directly placed on the
-            // channel.
-            Channel *out_ch = output_channels[iu->route_port];
-            out_ch->put(flit);
-            auto dst_pair = out_ch->conn.dst;
-            dprintf(this, "Flit ");
-            print_flit(&flit);
-            printf(" sent to {");
-            print_id(dst_pair.id);
-            printf(", %d}\n", dst_pair.port);
+        // Input units in the active state *may* be empty, e.g. if
+        // their body flits have not yet arrived.  Check that.
+        assert(!iu->buf.empty());
+        // if (iu->buf.empty()) {
+        //     continue;
+        // }
 
-            // With output speedup:
-            // auto &ou = output_units[iu->route_port];
-            // ou->buf.push_back(flit);
+        // The flit leaves the buffer here.
+        Flit flit = iu->buf.front();
 
-            // CT stage: return credit to the upstream node.
-            Channel *in_ch = input_channels[iport];
-            in_ch->put_credit(Credit{});
-            auto src_pair = in_ch->conn.src;
-            dprintf(this, "Credit sent to {");
-            print_id(src_pair.id);
-            printf(", %d}\n", src_pair.port);
+        dprintf(this, "Switch allocation success: ");
+        print_flit(&flit);
+        printf("\n");
+
+        assert(iu->global == STATE_ACTIVE);
+        iu->buf.pop_front();
+
+        assert(!iu->st_ready.has_value()); // XXX: harsh
+        iu->st_ready = flit;
+
+        assert(ou->global == STATE_ACTIVE);
+
+        // Credit decrement
+        dprintf(this, "Credit decrement, credit=%d->%d (oport=%d)\n",
+                ou->credit_count, ou->credit_count - 1, oport);
+        assert(ou->credit_count > 0);
+        ou->credit_count--;
+
+        // SA -> ?? transition
+        //
+        // Set the next stage according to the flit type and credit
+        // count.
+        //
+        // Note that switching state to CreditWait does NOT prevent the
+        // subsequent ST to happen. The flit that has succeeded SA on
+        // this cycle is transferred to iu->st_ready, and that is the
+        // only thing that is visible to the ST stage.
+        if (flit.type == FLIT_TAIL) {
+          ou->next_global = STATE_IDLE;
+          if (iu->buf.empty()) {
+            iu->next_global = STATE_IDLE;
+            iu->stage = PIPELINE_IDLE;
+            dprintf(this, "SA: next state is Idle\n");
+          } else {
+            iu->next_global = STATE_ROUTING;
+            iu->stage = PIPELINE_RC;
+            dprintf(this, "SA: next state is Routing\n");
+          }
+          mark_reschedule();
+        } else if (ou->credit_count == 0) {
+          dprintf(this, "SA: switching to CW\n");
+          iu->next_global = STATE_CREDWAIT;
+          ou->next_global = STATE_CREDWAIT;
+          dprintf(this, "SA: next state is CreditWait\n");
+        } else {
+          iu->next_global = STATE_ACTIVE;
+          iu->stage = PIPELINE_SA;
+          dprintf(this, "SA: next state is Active\n");
+          mark_reschedule();
         }
+        assert(ou->credit_count >= 0);
+      }
     }
+  }
 }
 
-void Router::update_states() {
-    bool changed = false;
+void Router::switch_traverse()
+{
+  for (int iport = 0; iport < get_radix(); iport++) {
+    InputUnit *iu = &input_units[iport];
 
-    for (int port = 0; port < get_radix(); port++) {
-        InputUnit *iu = &input_units[port];
-        OutputUnit *ou = &output_units[port];
-        if (iu->global != iu->next_global) {
-            iu->global = iu->next_global;
-            changed = true;
-        }
-        if (ou->global != ou->next_global) {
-            if (ou->next_global == STATE_CREDWAIT && ou->credit_count > 0) {
-                assert(false);
-            }
-            ou->global = ou->next_global;
-            changed = true;
-        }
-    }
+    if (iu->st_ready.has_value()) {
+      Flit flit = iu->st_ready.value();
+      iu->st_ready.reset();
+      dprintf(this, "Switch traverse: ");
+      print_flit(&flit);
+      printf("\n");
 
-    // Reschedule whenever there is one or more state change.
-    if (changed) {
-        mark_reschedule();
+      // No output speedup: there is no need for an output buffer
+      // (Ch17.3).  Flits that exit the switch are directly placed on the
+      // channel.
+      Channel *out_ch = output_channels[iu->route_port];
+      out_ch->put(flit);
+      auto dst_pair = out_ch->conn.dst;
+      dprintf(this, "Flit ");
+      print_flit(&flit);
+      printf(" sent to {");
+      print_id(dst_pair.id);
+      printf(", %d}\n", dst_pair.port);
+
+      // With output speedup:
+      // auto &ou = output_units[iu->route_port];
+      // ou->buf.push_back(flit);
+
+      // CT stage: return credit to the upstream node.
+      Channel *in_ch = input_channels[iport];
+      in_ch->put_credit(Credit{});
+      auto src_pair = in_ch->conn.src;
+      dprintf(this, "Credit sent to {");
+      print_id(src_pair.id);
+      printf(", %d}\n", src_pair.port);
     }
+  }
+}
+
+void Router::update_states()
+{
+  bool changed = false;
+
+  for (int port = 0; port < get_radix(); port++) {
+    InputUnit *iu = &input_units[port];
+    OutputUnit *ou = &output_units[port];
+    if (iu->global != iu->next_global) {
+      iu->global = iu->next_global;
+      changed = true;
+    }
+    if (ou->global != ou->next_global) {
+      if (ou->next_global == STATE_CREDWAIT && ou->credit_count > 0)
+        assert(false);
+      ou->global = ou->next_global;
+      changed = true;
+    }
+  }
+
+  // Reschedule whenever there is one or more state change.
+  if (changed) mark_reschedule();
 }
