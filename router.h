@@ -15,14 +15,6 @@ struct Stat {
 struct RouterPortPair {
   Id id;
   int port;
-  bool operator<(const RouterPortPair &b) const
-  {
-    return (id < b.id) || (id == b.id && port < b.port);
-  }
-  bool operator==(const RouterPortPair &b) const
-  {
-    return id == b.id && port == b.port;
-  }
 };
 
 #define RPHASH(ptr) (stbds_hash_bytes(ptr, sizeof(RouterPortPair), 0))
@@ -31,15 +23,6 @@ struct Connection {
   RouterPortPair src;
   RouterPortPair dst;
   int uniq; // Used as hash key.
-  /* FIXME */
-  bool operator<(const Connection &b) const
-  {
-    return (src < b.src) || (src == b.src && dst < b.dst);
-  }
-  bool operator==(const Connection &b) const
-  {
-    return src == b.src && dst == b.dst;
-  }
 };
 
 void print_conn(const char *name, Connection conn);
@@ -89,7 +72,7 @@ struct TopoDesc {
 };
 
 /// Source-side all-in-one route computation.
-std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id);
+int *source_route_compute(TopoDesc td, int src_id, int dst_id);
 
 enum FlitType {
     FLIT_HEAD,
@@ -100,7 +83,7 @@ enum FlitType {
 struct RouteInfo {
   int src;    // source node ID
   int dst{3}; // destination node ID
-  std::vector<int> path;
+  int *path;
   size_t idx{0};
 }; // only contained in the head flit
 
@@ -108,16 +91,12 @@ struct RouteInfo {
 /// Follows Fig. 16.13.
 struct Flit
 {
-  Flit(FlitType t, int src, int dst, long p) : type(t), payload(p)
-  {
-    route_info.src = src;
-    route_info.dst = dst;
-  }
-
   FlitType type;
   RouteInfo route_info;
   long payload;
 };
+
+Flit flit_create(FlitType t, int src, int dst, long p);
 
 std::ostream &operator<<(std::ostream &out, const Flit &flit);
 
@@ -179,16 +158,15 @@ struct OutputUnit {
   GlobalState next_global;
   int input_port;
   int input_vc;
-  int credit_count; // FIXME: hardcoded
+  int credit_count;
   // std::deque<Flit> buf;
   std::optional<Credit> buf_credit;
 };
 
-/// A node.  Despite its name, it can represent any of a router node, a source
+/// A node. Despite its name, it can represent any of a router node, a source
 /// node and a destination node.
-class Router
+struct Router
 {
-public:
   Router(EventQueue &eq, Stat &st, TopoDesc td, Id id, int radix,
          const std::vector<Channel *> &in_chs,
          const std::vector<Channel *> &out_chs);
@@ -227,7 +205,6 @@ public:
   void mark_reschedule() { reschedule_next_tick = true; }
   void do_reschedule();
 
-public:
   Id id;                     // router ID
   long flit_arrive_count{0}; // # of flits arrived for the destination node
   long flit_gen_count{0};    // # of flits generated for the destination node

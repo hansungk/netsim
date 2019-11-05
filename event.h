@@ -63,7 +63,7 @@ struct ChId {
 
 std::ostream &operator<<(std::ostream &out, const Id &id);
 
-class Router;
+struct Router;
 
 class Event {
 public:

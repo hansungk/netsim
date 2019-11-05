@@ -241,34 +241,30 @@ void Router::do_reschedule() {
     }
 }
 
-std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id) {
-    std::vector<int> path;
-
-    int total = td.k;
-    int cw_dist = (dst_id - src_id + total) % total;
-    if (cw_dist <= total / 2) {
-        // Clockwise
-        for (int i = 0; i < cw_dist; i++) {
-            path.push_back(2);
-        }
-        path.push_back(0);
-    } else {
-        // Counterclockwise
-        // TODO: if CW == CCW, pick random
-        for (int i = 0; i < total - cw_dist; i++) {
-            path.push_back(1);
-        }
-        path.push_back(0);
-    }
-
-    std::cout << "Source route computation: " << src_id << " -> " << dst_id
-              << ": {";
-    for (auto i : path) {
-        std::cout << i << ",";
-    }
-    std::cout << "}\n";
-
-    return path;
+// Returns an stb array containing the series of routed output ports.
+int *source_route_compute(TopoDesc td, int src_id, int dst_id)
+{
+  int *path = NULL;
+  int total = td.k;
+  int cw_dist = (dst_id - src_id + total) % total;
+  if (cw_dist <= total / 2) {
+    // Clockwise
+    for (int i = 0; i < cw_dist; i++)
+      arrput(path, 2);
+    arrput(path, 0);
+  } else {
+    // Counterclockwise
+    // TODO: if CW == CCW, pick random
+    for (int i = 0; i < total - cw_dist; i++)
+      arrput(path, 1);
+    arrput(path, 0);
+  }
+  printf("Source route computation: %d -> %d : {", src_id, dst_id);
+  for (long i = 0; i < arrlen(path); i++) {
+    printf("%d,", path[i]);
+  }
+  printf("}\n");
+  return path;
 }
 
 void Router::tick() {
@@ -334,64 +330,75 @@ void Router::tick() {
 /// Pipeline stages
 ///
 
-void Router::source_generate() {
-    OutputUnit *ou = &output_units[0];
+Flit flit_create(FlitType t, int src, int dst, long p)
+{
+  RouteInfo ri = {src, dst, {}, 0};
+  return (Flit){.type = t, .route_info = ri, .payload = p};
+}
 
-    if (ou->credit_count <= 0) {
-        dbg() << "Credit stall!\n";
-        return;
-    }
+void Router::source_generate()
+{
+  OutputUnit *ou = &output_units[0];
 
-    Flit flit{FLIT_BODY, id.value,
-              (id.value + 2) % 4, flit_payload_counter};
-    if (flit_payload_counter == 0) {
-        flit.type = FLIT_HEAD ;
-        flit.route_info.path = source_route_compute(
-            top_desc, flit.route_info.src, flit.route_info.dst);
-        flit_payload_counter++;
-    } else if (flit_payload_counter == 3 /* FIXME */) {
-        flit.type = FLIT_TAIL;
-        flit_payload_counter = 0;
-    } else {
-        flit_payload_counter++;
-    }
+  if (ou->credit_count <= 0) {
+    dbg() << "Credit stall!\n";
+    return;
+  }
 
-    assert(get_radix() == 1);
-    Channel *out_ch = output_channels[0];
-    out_ch->put(flit);
+  Flit flit = flit_create(FLIT_BODY, id.value, (id.value + 2) % 4,
+                          flit_payload_counter);
+  if (flit_payload_counter == 0) {
+    flit.type = FLIT_HEAD;
+    flit.route_info.path = source_route_compute(top_desc, flit.route_info.src,
+                                                flit.route_info.dst);
+    flit_payload_counter++;
+  } else if (flit_payload_counter == 3 /* FIXME */) {
+    flit.type = FLIT_TAIL;
+    flit_payload_counter = 0;
+  } else {
+    flit_payload_counter++;
+  }
 
-    dbg() << "Credit decrement, credit=" << ou->credit_count << "->"
-          << ou->credit_count - 1 << ";\n";
-    ou->credit_count--;
-    assert(ou->credit_count >= 0);
+  assert(get_radix() == 1);
+  Channel *out_ch = output_channels[0];
+  out_ch->put(flit);
 
-    flit_gen_count++;
-    dbg() << flit << " Flit created and sent!\n";
+  dbg() << "Credit decrement, credit=" << ou->credit_count << "->"
+        << ou->credit_count - 1 << ";\n";
+  ou->credit_count--;
+  assert(ou->credit_count >= 0);
 
-    // TODO: for now, infinitely generate flits.
-    mark_reschedule();
+  flit_gen_count++;
+  dbg() << flit << " Flit created and sent!\n";
+
+  // TODO: for now, infinitely generate flits.
+  mark_reschedule();
 }
 
 void Router::destination_consume() {
     InputUnit *iu = &input_units[0];
 
     if (!iu->buf.empty()) {
-        dbg() << "Destination buf size=" << iu->buf.size() << std::endl;
-        dbg() << iu->buf.front() << " Flit arrived!\n";
+      Flit flit = iu->buf.front();
+      dbg() << "Destination buf size=" << iu->buf.size() << std::endl;
+      dbg() << iu->buf.front() << " Flit arrived!\n";
 
-        flit_arrive_count++;
-        iu->buf.pop_front();
-        // assert(iu->buf.empty());
+      // Destroy memories allocated to flit.
+      arrfree(flit.route_info.path);
 
-        Channel *in_ch = input_channels[0];
-        in_ch->put_credit(Credit{});
+      flit_arrive_count++;
+      iu->buf.pop_front();
+      // assert(iu->buf.empty());
 
-        auto src_pair = in_ch->conn.src;
-        dbg() << "Credit sent to {" << src_pair.id << ", " << src_pair.port
-              << "}\n";
+      Channel *in_ch = input_channels[0];
+      in_ch->put_credit(Credit{});
 
-        // Self-tick autonomously unless all input ports are empty.
-        mark_reschedule();
+      auto src_pair = in_ch->conn.src;
+      dbg() << "Credit sent to {" << src_pair.id << ", " << src_pair.port
+            << "}\n";
+
+      // Self-tick autonomously unless all input ports are empty.
+      mark_reschedule();
     }
 }
 
@@ -508,8 +515,8 @@ void Router::route_compute() {
             //     }
             // }
 
-            assert(flit.route_info.idx < flit.route_info.path.size());
-            dbg() << "RC: path size = " << flit.route_info.path.size() << std::endl;
+            assert(flit.route_info.idx < arrlenu(flit.route_info.path));
+            dbg() << "RC: path size = " << arrlen(flit.route_info.path) << std::endl;
             iu->route_port = flit.route_info.path[flit.route_info.idx];
             dbg() << flit << " RC success (idx=" << flit.route_info.idx
                   << ", oport=" << iu->route_port << ")\n";
