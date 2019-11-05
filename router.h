@@ -4,7 +4,6 @@
 #include "event.h"
 #include "stb_ds.h"
 #include <deque>
-#include <iostream>
 #include <map>
 #include <optional>
 
@@ -97,7 +96,7 @@ struct Flit
 };
 
 Flit flit_create(FlitType t, int src, int dst, long p);
-
+void print_flit(const Flit *flit);
 std::ostream &operator<<(std::ostream &out, const Flit &flit);
 
 struct Credit {

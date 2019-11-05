@@ -2,6 +2,17 @@
 #include <cassert>
 #include <iostream>
 
+void print_id(Id id)
+{
+  if (is_src(id))
+    printf("Src ");
+  else if (is_dst(id))
+    printf("Dst ");
+  else
+    printf("Rtr ");
+  printf("%d", id.value);
+}
+
 std::ostream &operator<<(std::ostream &out, const Id &id) {
     if (is_src(id)) {
         out << "Src ";
