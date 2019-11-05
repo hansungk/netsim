@@ -1,45 +1,33 @@
 #include "queue.h"
 #include <assert.h>
 
-// Create a circular queue with specified size.
-Queue queue_create(size_t n)
+// Initialize a circular queue with specified size.
+void *queue_initf(void *a, size_t elemsize, size_t len)
 {
-  void **buf = (void **)calloc(n + 1, sizeof(void *));
-  assert(buf);
-  return (Queue){
-      .buf = buf,
-      .cap = n + 1,
-      .front = 0,
-      .back = 0,
-  };
+  a = NULL; // Squelch error.
+  void *b = malloc((len + 1) * elemsize + sizeof(Queue));
+  b = (char *)b + sizeof(Queue);
+  queue_header(b)->cap = len + 1;
+  queue_header(b)->front = 0;
+  queue_header(b)->back = 0;
+  return b;
 }
 
-void queue_destroy(Queue *q)
+void queue_free(void *a)
 {
-  free(q->buf);
+  free(queue_header(a));
 }
 
-long queue_len(const Queue *q)
+long queue_len(const void *a)
 {
+  Queue *q = queue_header(a);
   return (q->back + q->cap - q->front) % q->cap;
 }
 
-// Push an element in the back of the queue.
-void *queue_put(Queue *q, void *elem)
+// Pop an element from the front of the queue.
+void queue_popf(void *a)
 {
-  if (queue_len(q) == q->cap - 1)
-    return NULL;
-  void *p = q->buf[q->back] = elem;
-  q->back = (q->back + 1) % q->cap;
-  return p;
-}
-
-// Pop an element from the front of the queue, returning it.
-void *queue_pop(Queue *q)
-{
-  if (q->front == q->back)
-    return NULL;
-  void *p = q->buf[q->front];
-  q->front = (q->front + 1) % q->cap;
-  return p;
+  Queue *q = queue_header(a);
+  if (!queue_empty(a))
+    q->front = (q->front + 1) % q->cap;
 }
