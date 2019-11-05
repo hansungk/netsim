@@ -7,6 +7,8 @@ void print_conn(const char *name, Connection conn);
 Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     : topology(top)
 {
+  flit_allocator = alloc_create(sizeof(Flit));
+
   // Initialize channels
   for (ptrdiff_t i = 0; i < hmlen(top.forward_hash); i++) {
     Connection conn = top.forward_hash[i].value;
@@ -45,10 +47,10 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     src_out_chs.push_back(src_out_ch);
     dst_in_chs.push_back(dst_in_ch);
 
-    src_nodes.emplace_back(eventq, stat, td, src_id(id), 1, src_in_chs,
-                           src_out_chs);
-    dst_nodes.emplace_back(eventq, stat, td, dst_id(id), 1, dst_in_chs,
-                           dst_out_chs);
+    src_nodes.emplace_back(eventq, flit_allocator, stat, td, src_id(id), 1,
+                           src_in_chs, src_out_chs);
+    dst_nodes.emplace_back(eventq, flit_allocator, stat, td, dst_id(id), 1,
+                           dst_in_chs, dst_out_chs);
   }
 
   // Initialize router nodes
@@ -73,7 +75,8 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
       in_chs.push_back(in_ch);
     }
 
-    routers.emplace_back(eventq, stat, td, rtr_id(id), radix, in_chs, out_chs);
+    routers.emplace_back(eventq, flit_allocator, stat, td, rtr_id(id), radix,
+                         in_chs, out_chs);
   }
 }
 
@@ -124,4 +127,5 @@ void Sim::process(const Event &e) {
 void sim_destroy(Sim *sim)
 {
   hmfree(sim->channel_map);
+  alloc_destroy(sim->flit_allocator);
 }

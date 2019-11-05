@@ -2,6 +2,7 @@
 #define ROUTER_H
 
 #include "event.h"
+#include "mem.h"
 #include "stb_ds.h"
 #include <deque>
 #include <map>
@@ -106,15 +107,15 @@ struct Channel
 {
   Channel(EventQueue &eq, const long dl, const Connection conn);
 
-  void put(const Flit &flit);
+  void put(Flit *flit);
   void put_credit(const Credit &credit);
-  std::optional<Flit> get();
+  std::optional<Flit *> get();
   std::optional<Credit> get_credit();
 
   Connection conn;
   EventQueue &eventq;
   const long delay;
-  std::deque<std::pair<long, Flit>> buf{};
+  std::deque<std::pair<long, Flit *>> buf{};
   std::deque<std::pair<long, Credit>> buf_credit{};
 };
 
@@ -144,8 +145,8 @@ struct InputUnit {
   // credit count is omitted; it can be found in the output
   // units instead.
   PipelineStage stage;
-  std::deque<Flit> buf;
-  std::optional<Flit> st_ready;
+  Flit **buf;
+  std::optional<Flit *> st_ready;
 };
 
 struct OutputUnit {
@@ -154,7 +155,6 @@ struct OutputUnit {
   int input_port;
   int input_vc;
   int credit_count;
-  // std::deque<Flit> buf;
   std::optional<Credit> buf_credit;
 };
 
@@ -162,7 +162,7 @@ struct OutputUnit {
 /// node and a destination node.
 struct Router
 {
-  Router(EventQueue &eq, Stat &st, TopoDesc td, Id id, int radix,
+  Router(EventQueue &eq, Alloc *fa, Stat &st, TopoDesc td, Id id, int radix,
          const std::vector<Channel *> &in_chs,
          const std::vector<Channel *> &out_chs);
   // Router::tick_event captures pointer to 'this' in the Router's
@@ -170,6 +170,7 @@ struct Router
   // moving/copying of Router.
   Router(const Router &) = delete;
   Router(Router &&) = default;
+  ~Router();
 
   // Tick event
   void tick();
@@ -206,6 +207,7 @@ struct Router
   long flit_gen_count{0};    // # of flits generated for the destination node
 
   EventQueue &eventq; // reference to the simulator-global event queue
+  Alloc *flit_allocator;
   Stat &stat;
   const TopoDesc top_desc;
   const Event tick_event; // self-tick event.

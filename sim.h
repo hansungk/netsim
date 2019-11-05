@@ -3,6 +3,7 @@
 
 #include "event.h"
 #include "router.h"
+#include "mem.h"
 #include <memory>
 #include <map>
 
@@ -26,6 +27,7 @@ struct Sim
   void handler();
 
   EventQueue eventq{}; // global event queue
+  Alloc *flit_allocator;
   Stat stat;
   Topology topology;
   long channel_delay{1};

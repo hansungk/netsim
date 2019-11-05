@@ -26,19 +26,22 @@ int main(void) {
     sim_destroy(&sim);
     topology_destroy(&top);
 
-    int arr[4] = {0, 1, 2, 3};
-    Queue q = queue_create(4);
-    queue_put(&q, &arr[0]);
-    queue_put(&q, &arr[1]);
-    queue_put(&q, &arr[2]);
-    queue_put(&q, &arr[3]);
-    printf("len=%ld\n", queue_len(&q));
-    while (1) {
-      int *p = (int *)queue_pop(&q);
-      if (!p) break;
-      printf("*p=%d\n", *p);
-    }
-    queue_destroy(&q);
+    int *q = NULL;
+    queue_init(q, 4);
+    queue_put(q, 0);
+    queue_put(q, 1);
+    queue_put(q, 2);
+    queue_put(q, 3);
+    printf("len=%ld\n", queue_len(q));
+    printf("%d, len=%ld\n", queue_front(q), queue_len(q));
+    queue_pop(q);
+    printf("%d, len=%ld\n", queue_front(q), queue_len(q));
+    queue_pop(q);
+    printf("%d, len=%ld\n", queue_front(q), queue_len(q));
+    queue_pop(q);
+    printf("%d, len=%ld\n", queue_front(q), queue_len(q));
+    queue_pop(q);
+    queue_free(q);
 
     return 0;
 }
