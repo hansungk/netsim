@@ -25,9 +25,12 @@ struct RouterPortPair {
   }
 };
 
+#define RPHASH(ptr) (stbds_hash_bytes(ptr, sizeof(RouterPortPair), 0))
+
 struct Connection {
   RouterPortPair src;
   RouterPortPair dst;
+  int uniq; // Used as hash key.
   /* FIXME */
   bool operator<(const Connection &b) const
   {
@@ -39,12 +42,12 @@ struct Connection {
   }
 };
 
+void print_conn(const char *name, Connection conn);
+
 struct ConnectionHash {
   size_t key;
   Connection value;
 };
-
-#define RPHASH(ptr) (stbds_hash_bytes(ptr, sizeof(RouterPortPair), 0))
 
 static const Connection not_connected = (Connection){
     .src =
@@ -64,8 +67,8 @@ long id_hash(Id id);
 // Encodes channel connectivity in a bidirectional map.
 // Supports runtime checking for connectivity error.
 struct Topology {
-  ConnectionHash *forward_hash{NULL};
-  ConnectionHash *reverse_hash{NULL};
+  ConnectionHash *forward_hash;
+  ConnectionHash *reverse_hash;
 };
 
 Topology topology_ring(int n);
@@ -124,17 +127,14 @@ struct Credit {
 
 struct Channel
 {
-  Channel(EventQueue &eq, const long dl, const RouterPortPair s,
-          const RouterPortPair d);
+  Channel(EventQueue &eq, const long dl, const Connection conn);
 
   void put(const Flit &flit);
   void put_credit(const Credit &credit);
   std::optional<Flit> get();
   std::optional<Credit> get_credit();
 
-  RouterPortPair src;
-  RouterPortPair dst;
-
+  Connection conn;
   EventQueue &eventq;
   const long delay;
   std::deque<std::pair<long, Flit>> buf{};

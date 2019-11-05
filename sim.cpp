@@ -2,12 +2,7 @@
 #include <cassert>
 #include <iostream>
 
-static void print_channel(const char *ch_name, Channel *ch)
-{
-  printf("%s: %d.%d.%d -> %d.%d.%d\n", ch_name, ch->src.id.type,
-         ch->src.id.value, ch->src.port, ch->dst.id.type, ch->dst.id.value,
-         ch->dst.port);
-}
+void print_conn(const char *name, Connection conn);
 
 Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     : topology(top)
@@ -17,12 +12,11 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     Connection conn = top.forward_hash[i].value;
     // printf("Found connection: %d.%d.%d -> %d.%d.%d\n", conn.src.id.type, conn.src.id.value,
     //        conn.src.port, conn.dst.id.type, conn.dst.id.value, conn.dst.port);
-    channels.emplace_back(eventq, channel_delay, conn.src, conn.dst);
+    channels.emplace_back(eventq, channel_delay, conn);
   }
-  for (auto &ch : channels) {
-    auto conn = Connection{ch.src, ch.dst};
-    channel_map.insert({conn, ch});
-  }
+  channel_map = NULL;
+  for (auto &ch : channels)
+    hmput(channel_map, ch.conn.uniq, &ch);
 
   TopoDesc td{TOP_TORUS, 4, 1};
 
@@ -41,12 +35,12 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     Connection dst_conn = conn_find_reverse(&top, dst_rpp);
     assert(src_conn.src.port != -1);
     assert(dst_conn.src.port != -1);
-    auto src_out_ch_it = channel_map.find(src_conn);
-    auto dst_in_ch_it = channel_map.find(dst_conn);
-    assert(src_out_ch_it != channel_map.end());
-    assert(dst_in_ch_it != channel_map.end());
-    Channel *src_out_ch = &src_out_ch_it->second;
-    Channel *dst_in_ch = &dst_in_ch_it->second;
+    long src_idx = hmgeti(channel_map, src_conn.uniq);
+    long dst_idx = hmgeti(channel_map, dst_conn.uniq);
+    assert(src_idx >= 0);
+    assert(dst_idx >= 0);
+    Channel *src_out_ch = channel_map[src_idx].value;
+    Channel *dst_in_ch = channel_map[dst_idx].value;
 
     src_out_chs.push_back(src_out_ch);
     dst_in_chs.push_back(dst_in_ch);
@@ -68,12 +62,12 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
       Connection input_conn = conn_find_reverse(&top, rpp);
       assert(output_conn.src.port != -1);
       assert(input_conn.src.port != -1);
-      auto out_ch_it = channel_map.find(output_conn);
-      auto in_ch_it = channel_map.find(input_conn);
-      assert(out_ch_it != channel_map.end());
-      assert(in_ch_it != channel_map.end());
-      Channel *out_ch = &out_ch_it->second;
-      Channel *in_ch = &in_ch_it->second;
+      long out_idx = hmgeti(channel_map, output_conn.uniq);
+      long in_idx = hmgeti(channel_map, input_conn.uniq);
+      assert(out_idx >= 0);
+      assert(in_idx >= 0);
+      Channel *out_ch = channel_map[out_idx].value;
+      Channel *in_ch = channel_map[in_idx].value;
 
       out_chs.push_back(out_ch);
       in_chs.push_back(in_ch);
@@ -125,4 +119,9 @@ void Sim::process(const Event &e) {
     } else {
         assert(false);
     }
+}
+
+void sim_destroy(Sim *sim)
+{
+  hmfree(sim->channel_map);
 }

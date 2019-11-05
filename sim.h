@@ -8,27 +8,35 @@
 
 void fatal(const char *fmt, ...);
 
-class Sim {
-public:
-    Sim(int terminal_count, int router_count, int radix, Topology &top);
-
-    // Run the simulator.
-    void run(long until = -1);
-    // Process an event.
-    void process(const Event &e);
-    void report() const;
-
-    void handler();
-
-    EventQueue eventq{}; // global event queue
-    Stat stat;
-    Topology topology;
-    long channel_delay{1};
-    std::map<Connection, Channel &> channel_map{};
-    std::vector<Channel> channels{};
-    std::vector<Router> routers{};
-    std::vector<Router> src_nodes{};
-    std::vector<Router> dst_nodes{};
+struct ChannelMap {
+  int key;
+  Channel *value;
 };
+
+struct Sim
+{
+  Sim(int terminal_count, int router_count, int radix, Topology &top);
+
+  // Run the simulator.
+  void run(long until = -1);
+  // Process an event.
+  void process(const Event &e);
+  void report() const;
+
+  void handler();
+
+  EventQueue eventq{}; // global event queue
+  Stat stat;
+  Topology topology;
+  long channel_delay{1};
+  // std::map<Connection, Channel &> channel_map{};
+  ChannelMap *channel_map;
+  std::vector<Channel> channels{};
+  std::vector<Router> routers{};
+  std::vector<Router> src_nodes{};
+  std::vector<Router> dst_nodes{};
+};
+
+void sim_destroy(Sim *sim);
 
 #endif

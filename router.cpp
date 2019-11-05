@@ -10,20 +10,19 @@ static Event tick_event_from_id(Id id) {
     return Event{id, [](Router &r) { r.tick(); }};
 }
 
-Channel::Channel(EventQueue &eq, const long dl, const RouterPortPair s,
-                 const RouterPortPair d)
-    : src(s), dst(d), eventq(eq), delay(dl)
+Channel::Channel(EventQueue &eq, const long dl, const Connection conn)
+    : conn(conn), eventq(eq), delay(dl)
 {
 }
 
 void Channel::put(const Flit &flit) {
-    buf.push_back({eventq.curr_time() + delay, flit});
-    eventq.reschedule(delay, tick_event_from_id(dst.id));
+  buf.push_back({eventq.curr_time() + delay, flit});
+  eventq.reschedule(delay, tick_event_from_id(conn.dst.id));
 }
 
 void Channel::put_credit(const Credit &credit) {
     buf_credit.push_back({eventq.curr_time() + delay, credit});
-    eventq.reschedule(delay, tick_event_from_id(src.id));
+    eventq.reschedule(delay, tick_event_from_id(conn.src.id));
 }
 
 std::optional<Flit> Channel::get()
@@ -50,6 +49,13 @@ std::optional<Credit> Channel::get_credit() {
     }
 }
 
+void print_conn(const char *name, Connection conn)
+{
+  printf("%s: %d.%d.%d -> %d.%d.%d\n", name, conn.src.id.type,
+         conn.src.id.value, conn.src.port, conn.dst.id.type, conn.dst.id.value,
+         conn.dst.port);
+}
+
 Topology topology_create(void) {
   return (Topology){
       .forward_hash = NULL,
@@ -67,14 +73,17 @@ bool topology_connect(Topology *t, RouterPortPair input, RouterPortPair output)
 {
   size_t inkey = RPHASH(&input);
   size_t outkey = RPHASH(&output);
-  if (hmgeti(t->forward_hash, inkey) != -1 || hmgeti(t->reverse_hash, outkey) != -1) {
+  if (hmgeti(t->forward_hash, inkey) >= 0 ||
+      hmgeti(t->reverse_hash, outkey) >= 0)
     // Bad connectivity: source or destination port is already connected
     return false;
-  }
-  Connection conn = (Connection){.src = input, .dst = output};
+  int uniq = hmlen(t->forward_hash);
+  Connection conn = (Connection){.src = input, .dst = output, .uniq = uniq};
+  print_conn("connect", conn);
   hmput(t->forward_hash, inkey, conn);
   hmput(t->reverse_hash, outkey, conn);
-  assert(hmgeti(t->forward_hash, inkey) != -1);
+  printf("Pushed conn with uniq=%d\n", conn.uniq);
+  assert(hmgeti(t->forward_hash, inkey) >= 0);
   return true;
 }
 
@@ -377,7 +386,7 @@ void Router::destination_consume() {
         Channel *in_ch = input_channels[0];
         in_ch->put_credit(Credit{});
 
-        auto src_pair = in_ch->src;
+        auto src_pair = in_ch->conn.src;
         dbg() << "Credit sent to {" << src_pair.id << ", " << src_pair.port
               << "}\n";
 
@@ -710,7 +719,7 @@ void Router::switch_traverse() {
             // channel.
             Channel *out_ch = output_channels[iu->route_port];
             out_ch->put(flit);
-            auto dst_pair = out_ch->dst;
+            auto dst_pair = out_ch->conn.dst;
             dbg() << "Flit " << flit << " sent to {" << dst_pair.id << ", "
                   << dst_pair.port << "}\n";
 
@@ -721,7 +730,7 @@ void Router::switch_traverse() {
             // CT stage: return credit to the upstream node.
             Channel *in_ch = input_channels[iport];
             in_ch->put_credit(Credit{});
-            auto src_pair = in_ch->src;
+            auto src_pair = in_ch->conn.src;
             dbg() << "Credit sent to {" << src_pair.id << ", "
                   << src_pair.port << "}\n";
         }

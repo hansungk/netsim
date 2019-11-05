@@ -22,6 +22,7 @@ int main(void) {
 
     sim.run(10000);
 
+    sim_destroy(&sim);
     topology_destroy(&top);
 
     return 0;
