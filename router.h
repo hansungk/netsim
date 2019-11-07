@@ -6,7 +6,7 @@
 #include "stb_ds.h"
 
 struct Stat {
-    long double_tick_count{0};
+    long double_tick_count = 0;
 };
 
 struct RouterPortPair {
@@ -14,6 +14,7 @@ struct RouterPortPair {
     int port;
 };
 
+// FIXME: Currently we have no way to cope with hash collisions.
 #define RPHASH(ptr) (stbds_hash_bytes(ptr, sizeof(RouterPortPair), 0))
 
 struct Connection {
@@ -192,29 +193,25 @@ struct Router {
     int sa_arbit_round_robin(int out_port);
 
     // Misc
-    /* int get_radix() const { return input_units.size(); } */
     int get_radix() const { return arrlen(input_units); }
 
     // Mark self-reschedule on the next tick
     void mark_reschedule() { reschedule_next_tick = true; }
     void do_reschedule();
 
-    Id id;                     // router ID
-    long flit_arrive_count{0}; // # of flits arrived for the destination node
-    long flit_gen_count{0};    // # of flits generated for the destination node
-
-    EventQueue *eventq; // reference to the simulator-global event queue
+    Id id;                      // router ID
+    long flit_arrive_count = 0; // # of flits arrived for the destination node
+    long flit_gen_count = 0;    // # of flits generated for the destination node
+    EventQueue *eventq;         // reference to the simulator-global event queue
     Alloc *flit_allocator;
     Stat *stat;
     TopoDesc top_desc;
-    size_t input_buf_size{100};
+    size_t input_buf_size = 100;
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
-    long last_reschedule_tick{-1}; // XXX: hacky?
-    long flit_payload_counter{0};  // for simple payload generation
-    bool reschedule_next_tick{
-        false}; // marks whether to self-tick at the next cycle
-
+    long flit_payload_counter = 0; // for simple payload generation
+    bool reschedule_next_tick =
+        false; // marks whether to self-tick at the next cycle
     // Pointers to the input/output channels for each port.
     Channel **input_channels;
     Channel **output_channels;
@@ -222,7 +219,6 @@ struct Router {
     // this router.
     InputUnit *input_units;
     OutputUnit *output_units;
-
     // Allocator variables.
     int va_last_grant_input;
     int sa_last_grant_input;

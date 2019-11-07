@@ -288,12 +288,8 @@ void router_destroy(Router *r)
 
 void Router::do_reschedule()
 {
-    if (reschedule_next_tick && eventq->curr_time() != last_reschedule_tick) {
+    if (reschedule_next_tick) {
         eventq->reschedule(1, tick_event_from_id(id));
-        // dbg() << "self-rescheduled to " << eventq->curr_time() + 1 <<
-        // std::endl;
-        // XXX: Hacky!
-        last_reschedule_tick = eventq->curr_time();
     }
 }
 
