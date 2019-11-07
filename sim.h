@@ -31,7 +31,7 @@ struct Sim
   long channel_delay{1};
   // std::map<Connection, Channel &> channel_map{};
   ChannelMap *channel_map;
-  std::vector<Channel> channels{};
+  Channel *channels;
   std::vector<Router> routers{};
   std::vector<Router> src_nodes{};
   std::vector<Router> dst_nodes{};

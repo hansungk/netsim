@@ -19,30 +19,40 @@ static Event tick_event_from_id(Id id)
     return Event{id, [](Router &r) { r.tick(); }};
 }
 
-Channel::Channel(EventQueue &eq, const long dl, const Connection conn)
-    : conn(conn), eventq(eq), delay(dl)
+Channel::Channel(EventQueue *eq, long dl, const Connection conn)
+        : conn(conn), eventq(eq), delay(dl)
 {
+    queue_init(buf, 4); // FIXME hardcoded
+    queue_init(buf_credit, 4); // FIXME hardcoded
+}
+
+void channel_destroy(Channel *ch)
+{
+    queue_free(ch->buf);
+    queue_free(ch->buf_credit);
 }
 
 void Channel::put(Flit *flit)
 {
-    buf.push_back({eventq.curr_time() + delay, flit});
-    eventq.reschedule(delay, tick_event_from_id(conn.dst.id));
+    TimedFlit tf = {eventq->curr_time() + delay, flit};
+    queue_put(buf, tf);
+    eventq->reschedule(delay, tick_event_from_id(conn.dst.id));
 }
 
 void Channel::put_credit(const Credit &credit)
 {
-    buf_credit.push_back({eventq.curr_time() + delay, credit});
-    eventq.reschedule(delay, tick_event_from_id(conn.src.id));
+    TimedCredit tc = {eventq->curr_time() + delay, credit};
+    queue_put(buf_credit, tc);
+    eventq->reschedule(delay, tick_event_from_id(conn.src.id));
 }
 
 std::optional<Flit *> Channel::get()
 {
-    auto front = buf.cbegin();
-    if (!buf.empty() && eventq.curr_time() >= front->first) {
-        assert(eventq.curr_time() == front->first && "stagnant flit!");
-        Flit *flit = front->second;
-        buf.pop_front();
+    TimedFlit front = queue_front(buf);
+    if (!queue_empty(buf) && eventq->curr_time() >= front.time) {
+        assert(eventq->curr_time() == front.time && "stagnant flit!");
+        Flit *flit = front.flit;
+        queue_pop(buf);
         return flit;
     } else {
         return {};
@@ -51,11 +61,11 @@ std::optional<Flit *> Channel::get()
 
 std::optional<Credit> Channel::get_credit()
 {
-    auto front = buf_credit.cbegin();
-    if (!buf_credit.empty() && eventq.curr_time() >= front->first) {
-        assert(eventq.curr_time() == front->first && "stagnant flit!");
-        buf_credit.pop_front();
-        return front->second;
+    TimedCredit front = queue_front(buf_credit);
+    if (!queue_empty(buf_credit) && eventq->curr_time() >= front.time) {
+        assert(eventq->curr_time() == front.time && "stagnant flit!");
+        queue_pop(buf_credit);
+        return front.credit;
     } else {
         return {};
     }

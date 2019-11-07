@@ -4,7 +4,6 @@
 #include "event.h"
 #include "mem.h"
 #include "stb_ds.h"
-#include <deque>
 #include <optional>
 
 struct Stat {
@@ -101,8 +100,18 @@ struct Credit {
     // VC is omitted, as we only have one VC per a physical channel.
 };
 
+struct TimedFlit {
+    long time;
+    Flit *flit;
+};
+
+struct TimedCredit {
+    long time;
+    Credit credit;
+};
+
 struct Channel {
-    Channel(EventQueue &eq, const long dl, const Connection conn);
+    Channel(EventQueue *eq, long dl, const Connection conn);
 
     void put(Flit *flit);
     void put_credit(const Credit &credit);
@@ -110,11 +119,13 @@ struct Channel {
     std::optional<Credit> get_credit();
 
     Connection conn;
-    EventQueue &eventq;
-    const long delay;
-    std::deque<std::pair<long, Flit *>> buf{};
-    std::deque<std::pair<long, Credit>> buf_credit{};
+    EventQueue *eventq;
+    long delay;
+    TimedFlit *buf = NULL;
+    TimedCredit *buf_credit = NULL;
 };
+
+void channel_destroy(Channel *ch);
 
 // Pipeline stages.
 enum PipelineStage {
