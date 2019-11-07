@@ -14,7 +14,7 @@ static void dprintf(Router *r, const char *fmt, ...)
     va_end(args);
 }
 
-static Event tick_event_from_id(Id id)
+Event tick_event_from_id(Id id)
 {
     return Event{id, [](Router &r) { r.tick(); }};
 }
@@ -246,8 +246,7 @@ static void output_unit_destroy(OutputUnit *ou)
 Router::Router(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id_,
                int radix, Channel **in_chs, Channel **out_chs)
     : id(id_), eventq(eq), flit_allocator(fa), stat(st), top_desc(td),
-      tick_event(tick_event_from_id(id_)), va_last_grant_input(0),
-      sa_last_grant_input(0)
+      va_last_grant_input(0), sa_last_grant_input(0)
 {
     input_channels = NULL;
     output_channels = NULL;
@@ -290,7 +289,7 @@ void router_destroy(Router *r)
 void Router::do_reschedule()
 {
     if (reschedule_next_tick && eventq->curr_time() != last_reschedule_tick) {
-        eventq->reschedule(1, tick_event);
+        eventq->reschedule(1, tick_event_from_id(id));
         // dbg() << "self-rescheduled to " << eventq->curr_time() + 1 <<
         // std::endl;
         // XXX: Hacky!

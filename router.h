@@ -165,6 +165,8 @@ struct OutputUnit {
     Credit *buf_credit;
 };
 
+Event tick_event_from_id(Id id);
+
 /// A node. Despite its name, it can represent any of a router node, a source
 /// node and a destination node.
 struct Router {
@@ -190,7 +192,6 @@ struct Router {
     int sa_arbit_round_robin(int out_port);
 
     // Misc
-    const Event &get_tick_event() const { return tick_event; }
     /* int get_radix() const { return input_units.size(); } */
     int get_radix() const { return arrlen(input_units); }
 
@@ -206,7 +207,6 @@ struct Router {
     Alloc *flit_allocator;
     Stat *stat;
     TopoDesc top_desc;
-    Event tick_event; // self-tick event.
     size_t input_buf_size{100};
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
