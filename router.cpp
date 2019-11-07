@@ -46,7 +46,7 @@ void Channel::put_credit(const Credit &credit)
     eventq->reschedule(delay, tick_event_from_id(conn.src.id));
 }
 
-std::optional<Flit *> Channel::get()
+Flit *Channel::get()
 {
     TimedFlit front = queue_front(buf);
     if (!queue_empty(buf) && eventq->curr_time() >= front.time) {
@@ -55,19 +55,20 @@ std::optional<Flit *> Channel::get()
         queue_pop(buf);
         return flit;
     } else {
-        return {};
+        return NULL;
     }
 }
 
-std::optional<Credit> Channel::get_credit()
+bool Channel::get_credit(Credit *c)
 {
     TimedCredit front = queue_front(buf_credit);
     if (!queue_empty(buf_credit) && eventq->curr_time() >= front.time) {
         assert(eventq->curr_time() == front.time && "stagnant flit!");
         queue_pop(buf_credit);
-        return front.credit;
+        *c = front.credit;
+        return true;
     } else {
-        return {};
+        return false;
     }
 }
 
@@ -220,13 +221,15 @@ static InputUnit input_unit_create(int bufsize)
 
 static OutputUnit output_unit_create(int bufsize)
 {
+    Credit *buf_credit = NULL;
+    queue_init(buf_credit, bufsize * 2); // FIXME: unnecessarily big.
     return (OutputUnit){
         .global = STATE_IDLE,
         .next_global = STATE_IDLE,
         .input_port = -1,
         .input_vc = 0,
         .credit_count = bufsize,
-        .buf_credit = std::optional<Credit>{},
+        .buf_credit = buf_credit,
     };
 }
 
@@ -448,7 +451,7 @@ void Router::fetch_flit()
 
         if (flit_opt) {
             dprintf(this, "Fetched flit ");
-            Flit *flit = flit_opt.value();
+            Flit *flit = flit_opt;
             print_flit(flit);
             printf(", buf.size()=%zd\n", queue_len(iu->buf));
 
@@ -478,13 +481,14 @@ void Router::fetch_flit()
 void Router::fetch_credit()
 {
     for (int oport = 0; oport < get_radix(); oport++) {
-        OutputUnit *ou = &output_units[oport];
         Channel *och = output_channels[oport];
-        auto credit_opt = och->get_credit();
-
-        if (credit_opt) {
+        Credit c;
+        bool got = och->get_credit(&c);
+        if (got) {
+            OutputUnit *ou = &output_units[oport];
             dprintf(this, "Fetched credit, oport=%d\n", oport);
-            ou->buf_credit = credit_opt.value();
+            assert(queue_empty(ou->buf_credit));
+            queue_put(ou->buf_credit, c);
             mark_reschedule();
         }
     }
@@ -494,7 +498,7 @@ void Router::credit_update()
 {
     for (int oport = 0; oport < get_radix(); oport++) {
         OutputUnit *ou = &output_units[oport];
-        if (ou->buf_credit) {
+        if (!queue_empty(ou->buf_credit)) {
             dprintf(this, "Credit update! credit=%d->%d (oport=%d)\n",
                     ou->credit_count, ou->credit_count + 1, oport);
             // Upon credit update, the input and output unit receiving this
@@ -524,7 +528,8 @@ void Router::credit_update()
             }
 
             ou->credit_count++;
-            ou->buf_credit.reset();
+            queue_pop(ou->buf_credit);
+            assert(queue_empty(ou->buf_credit));
         } else {
             // dbg() << "No credit update, oport=" << oport << std::endl;
         }

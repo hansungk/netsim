@@ -4,7 +4,6 @@
 #include "event.h"
 #include "mem.h"
 #include "stb_ds.h"
-#include <optional>
 
 struct Stat {
     long double_tick_count{0};
@@ -115,8 +114,8 @@ struct Channel {
 
     void put(Flit *flit);
     void put_credit(const Credit &credit);
-    std::optional<Flit *> get();
-    std::optional<Credit> get_credit();
+    Flit *get();
+    bool get_credit(Credit *c);
 
     Connection conn;
     EventQueue *eventq;
@@ -163,7 +162,7 @@ struct OutputUnit {
     int input_port;
     int input_vc;
     int credit_count;
-    std::optional<Credit> buf_credit;
+    Credit *buf_credit;
 };
 
 /// A node. Despite its name, it can represent any of a router node, a source
