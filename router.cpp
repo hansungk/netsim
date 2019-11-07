@@ -2,8 +2,6 @@
 #include "queue.h"
 #include "stb_ds.h"
 #include <cassert>
-#include <iomanip>
-#include <random>
 
 static void dprintf(Router *r, const char *fmt, ...)
 {
@@ -94,10 +92,8 @@ bool topology_connect(Topology *t, RouterPortPair input, RouterPortPair output)
         return false;
     int uniq = hmlen(t->forward_hash);
     Connection conn = (Connection){.src = input, .dst = output, .uniq = uniq};
-    print_conn("connect", conn);
     hmput(t->forward_hash, inkey, conn);
     hmput(t->reverse_hash, outkey, conn);
-    printf("Pushed conn with uniq=%d\n", conn.uniq);
     assert(hmgeti(t->forward_hash, inkey) >= 0);
     return true;
 }
@@ -177,10 +173,19 @@ Connection conn_find_reverse(Topology *t, RouterPortPair in_port)
         return t->reverse_hash[idx].value;
 }
 
-Flit flit_create(FlitType t, int src, int dst, long p)
+Flit *flit_create(FlitType t, int src, int dst, long p)
 {
+    Flit *flit = (Flit *)malloc(sizeof(Flit));
     RouteInfo ri = {src, dst, {}, 0};
-    return (Flit){.type = t, .route_info = ri, .payload = p};
+    *flit = (Flit){.type = t, .route_info = ri, .payload = p};
+    return flit;
+}
+
+void flit_destroy(Flit *flit)
+{
+    if (flit->route_info.path)
+        arrfree(flit->route_info.path);
+    free(flit);
 }
 
 void print_flit(const Flit *flit)
@@ -199,7 +204,7 @@ static InputUnit input_unit_create(int bufsize)
         .output_vc = 0,
         .stage = PIPELINE_IDLE,
         .buf = buf,
-        .st_ready = std::optional<Flit *>{},
+        .st_ready = NULL,
     };
 }
 
@@ -218,9 +223,9 @@ static OutputUnit output_unit_create(int bufsize)
 Router::Router(EventQueue &eq, Alloc *fa, Stat &st, TopoDesc td, Id id_,
                int radix, const std::vector<Channel *> &in_chs,
                const std::vector<Channel *> &out_chs)
-    : id(id_), flit_allocator(fa), eventq(eq), stat(st), top_desc(td),
+    : id(id_), eventq(eq), flit_allocator(fa), stat(st), top_desc(td),
       tick_event(tick_event_from_id(id_)), input_channels(in_chs),
-      output_channels(out_chs)
+      output_channels(out_chs), va_last_grant_input(0), sa_last_grant_input(0)
 {
     // input_units = NULL;
     // output_units = NULL;
@@ -241,14 +246,6 @@ Router::Router(EventQueue &eq, Alloc *fa, Stat &st, TopoDesc td, Id id_,
         input_units[0].route_port = 0;
         output_units[0].input_port = 0;
     }
-
-    std::random_device rd;
-    std::mt19937 gen{rd()};
-    std::uniform_int_distribution<> dist{0, get_radix() - 1};
-    va_last_grant_input = dist(gen);
-    va_last_grant_input = 0;
-    sa_last_grant_input = dist(gen);
-    sa_last_grant_input = 0;
 }
 
 Router::~Router()
@@ -256,14 +253,6 @@ Router::~Router()
     for (int port = 0; port < get_radix(); port++) {
         queue_free(input_units[port].buf);
     }
-}
-
-std::ostream &Router::dbg() const
-{
-    auto &out = std::cout;
-    out << "[@" << std::setw(3) << eventq.curr_time() << "] ";
-    out << "[" << id << "] ";
-    return out;
 }
 
 void Router::do_reschedule()
@@ -378,9 +367,8 @@ void Router::source_generate()
 
     // Handle flit_h = zalloc(flit_allocator);
     // Flit *flit = zptr(flit_h);
-    Flit *flit = (Flit *)malloc(sizeof(Flit));
-    *flit = flit_create(FLIT_BODY, id.value, (id.value + 2) % 4,
-                        flit_payload_counter);
+    Flit *flit = flit_create(FLIT_BODY, id.value, (id.value + 2) % 4,
+                             flit_payload_counter);
     if (flit_payload_counter == 0) {
         flit->type = FLIT_HEAD;
         flit->route_info.path = source_route_compute(
@@ -422,14 +410,11 @@ void Router::destination_consume()
         dprintf(this, "Flit arrived: ");
         print_flit(flit);
         printf("\n");
-
-        // Destroy memories allocated to flit.
-        arrfree(flit->route_info.path);
-        free(flit);
+        flit_destroy(flit);
 
         flit_arrive_count++;
         queue_pop(iu->buf);
-        // assert(iu->buf.empty());
+        assert(queue_empty(iu->buf));
 
         Channel *in_ch = input_channels[0];
         in_ch->put_credit(Credit{});
@@ -474,7 +459,7 @@ void Router::fetch_flit()
 
             queue_put(iu->buf, flit);
 
-            assert(queue_len(iu->buf) <= input_buf_size &&
+            assert((size_t)queue_len(iu->buf) <= input_buf_size &&
                    "Input buffer overflow!");
         }
     }
@@ -588,8 +573,7 @@ void Router::route_compute()
 // This function expects the given output VC to be in the Idle state.
 int Router::vc_arbit_round_robin(int out_port)
 {
-    int iport = (va_last_grant_input + 1) % get_radix();
-
+    // Debug: print contenders
     int *v = NULL;
     for (int i = 0; i < get_radix(); i++) {
         InputUnit *iu = &input_units[i];
@@ -604,19 +588,17 @@ int Router::vc_arbit_round_robin(int out_port)
     }
     arrfree(v);
 
+    int iport = (va_last_grant_input + 1) % get_radix();
     for (int i = 0; i < get_radix(); i++) {
         InputUnit *iu = &input_units[iport];
-
         if (iu->global == STATE_VCWAIT && iu->route_port == out_port) {
             // XXX: is VA stage and VCWait state the same?
             assert(iu->stage == PIPELINE_VA);
             va_last_grant_input = iport;
             return iport;
         }
-
         iport = (iport + 1) % get_radix();
     }
-
     // Indicates that there was no request for this VC.
     return -1;
 }
@@ -728,7 +710,8 @@ void Router::switch_alloc()
                 assert(iu->global == STATE_ACTIVE);
                 queue_pop(iu->buf);
 
-                assert(!iu->st_ready.has_value()); // XXX: harsh
+                assert(!iu->st_ready); // XXX: harsh
+                assert(flit);
                 iu->st_ready = flit;
 
                 assert(ou->global == STATE_ACTIVE);
@@ -782,9 +765,9 @@ void Router::switch_traverse()
     for (int iport = 0; iport < get_radix(); iport++) {
         InputUnit *iu = &input_units[iport];
 
-        if (iu->st_ready.has_value()) {
-            Flit *flit = iu->st_ready.value();
-            iu->st_ready.reset();
+        if (iu->st_ready) {
+            Flit *flit = iu->st_ready;
+            iu->st_ready = NULL;
             dprintf(this, "Switch traverse: ");
             print_flit(flit);
             printf("\n");

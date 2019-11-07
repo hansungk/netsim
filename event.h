@@ -3,7 +3,6 @@
 
 #include <functional>
 #include <queue>
-#include <variant>
 #include <iostream>
 
 enum IdType {

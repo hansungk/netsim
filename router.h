@@ -5,7 +5,6 @@
 #include "mem.h"
 #include "stb_ds.h"
 #include <deque>
-#include <map>
 #include <optional>
 
 struct Stat {
@@ -95,7 +94,7 @@ struct Flit {
     long payload;
 };
 
-Flit flit_create(FlitType t, int src, int dst, long p);
+Flit *flit_create(FlitType t, int src, int dst, long p);
 void print_flit(const Flit *flit);
 
 struct Credit {
@@ -144,7 +143,7 @@ struct InputUnit {
     // units instead.
     PipelineStage stage;
     Flit **buf;
-    std::optional<Flit *> st_ready;
+    Flit *st_ready;
 };
 
 struct OutputUnit {

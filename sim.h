@@ -4,8 +4,6 @@
 #include "event.h"
 #include "router.h"
 #include "mem.h"
-#include <memory>
-#include <map>
 
 void fatal(const char *fmt, ...);
 
