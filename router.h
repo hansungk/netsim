@@ -168,15 +168,8 @@ struct OutputUnit {
 /// A node. Despite its name, it can represent any of a router node, a source
 /// node and a destination node.
 struct Router {
-    Router(EventQueue &eq, Alloc *fa, Stat &st, TopoDesc td, Id id, int radix,
-           const std::vector<Channel *> &in_chs,
-           const std::vector<Channel *> &out_chs);
-    // Router::tick_event captures pointer to 'this' in the Router's
-    // constructor. To prevent invalidating the 'this' pointer, we should
-    // disallow moving/copying of Router.
-    Router(const Router &) = delete;
-    Router(Router &&) = default;
-    ~Router();
+    Router(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id, int radix,
+           Channel **in_chs, Channel **out_chs);
 
     // Tick event
     void tick();
@@ -198,11 +191,8 @@ struct Router {
 
     // Misc
     const Event &get_tick_event() const { return tick_event; }
-    int get_radix() const { return input_units.size(); }
-    // int get_radix() const { return arrlen(input_units); }
-
-    // Debug output stream
-    std::ostream &dbg() const;
+    /* int get_radix() const { return input_units.size(); } */
+    int get_radix() const { return arrlen(input_units); }
 
     // Mark self-reschedule on the next tick
     void mark_reschedule() { reschedule_next_tick = true; }
@@ -212,12 +202,12 @@ struct Router {
     long flit_arrive_count{0}; // # of flits arrived for the destination node
     long flit_gen_count{0};    // # of flits generated for the destination node
 
-    EventQueue &eventq; // reference to the simulator-global event queue
+    EventQueue *eventq; // reference to the simulator-global event queue
     Alloc *flit_allocator;
-    Stat &stat;
-    const TopoDesc top_desc;
-    const Event tick_event; // self-tick event.
-    const size_t input_buf_size{100};
+    Stat *stat;
+    TopoDesc top_desc;
+    Event tick_event; // self-tick event.
+    size_t input_buf_size{100};
     long last_tick{-1}; // record the last tick time to prevent double-tick in
                         // single cycle
     long last_reschedule_tick{-1}; // XXX: hacky?
@@ -226,17 +216,18 @@ struct Router {
         false}; // marks whether to self-tick at the next cycle
 
     // Pointers to the input/output channels for each port.
-    std::vector<Channel *> input_channels;
-    std::vector<Channel *> output_channels;
-    // Input/output units.
-    std::vector<InputUnit> input_units;
-    std::vector<OutputUnit> output_units;
-    // InputUnit *input_units;
-    // OutputUnit *output_units;
+    Channel **input_channels;
+    Channel **output_channels;
+    // Array of input/output units. Their lengths are the same as the radix of
+    // this router.
+    InputUnit *input_units;
+    OutputUnit *output_units;
 
     // Allocator variables.
     int va_last_grant_input;
     int sa_last_grant_input;
 };
+
+void router_destroy(Router *r);
 
 #endif

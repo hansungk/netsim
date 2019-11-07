@@ -32,9 +32,9 @@ struct Sim
   // std::map<Connection, Channel &> channel_map{};
   ChannelMap *channel_map;
   Channel *channels;
-  std::vector<Router> routers{};
-  std::vector<Router> src_nodes{};
-  std::vector<Router> dst_nodes{};
+  Router *routers;
+  Router *src_nodes;
+  Router *dst_nodes;
 };
 
 void sim_destroy(Sim *sim);

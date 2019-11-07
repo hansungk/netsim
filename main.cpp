@@ -21,7 +21,7 @@ int main(void) {
     //                                  r.put(2, Flit{Flit::Type::Body, 3});
     //                              }});
 
-    sim.run(10000);
+    sim.run(1);
 
     sim_destroy(&sim);
     topology_destroy(&top);

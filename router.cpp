@@ -5,7 +5,7 @@
 
 static void dprintf(Router *r, const char *fmt, ...)
 {
-    printf("[@%3ld] [", r->eventq.curr_time());
+    printf("[@%3ld] [", r->eventq->curr_time());
     print_id(r->id);
     printf("] ");
     va_list args;
@@ -233,49 +233,68 @@ static OutputUnit output_unit_create(int bufsize)
     };
 }
 
-Router::Router(EventQueue &eq, Alloc *fa, Stat &st, TopoDesc td, Id id_,
-               int radix, const std::vector<Channel *> &in_chs,
-               const std::vector<Channel *> &out_chs)
-    : id(id_), eventq(eq), flit_allocator(fa), stat(st), top_desc(td),
-      tick_event(tick_event_from_id(id_)), input_channels(in_chs),
-      output_channels(out_chs), va_last_grant_input(0), sa_last_grant_input(0)
+static void input_unit_destroy(InputUnit *iu)
 {
-    // input_units = NULL;
-    // output_units = NULL;
+    queue_free(iu->buf);
+}
+
+static void output_unit_destroy(OutputUnit *ou)
+{
+    queue_free(ou->buf_credit);
+}
+
+Router::Router(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id_,
+               int radix, Channel **in_chs, Channel **out_chs)
+    : id(id_), eventq(eq), flit_allocator(fa), stat(st), top_desc(td),
+      tick_event(tick_event_from_id(id_)), va_last_grant_input(0),
+      sa_last_grant_input(0)
+{
+    input_channels = NULL;
+    output_channels = NULL;
+    for (long i = 0; i < arrlen(in_chs); i++)
+        arrput(input_channels, in_chs[i]);
+    for (long i = 0; i < arrlen(out_chs); i++)
+        arrput(output_channels, out_chs[i]);
+
+    input_units = NULL;
+    output_units = NULL;
     for (int port = 0; port < radix; port++) {
         InputUnit iu = input_unit_create(input_buf_size);
         OutputUnit ou = output_unit_create(input_buf_size);
-        input_units.push_back(iu);
-        output_units.push_back(ou);
-        // arrput(input_units, iu);
-        // arrput(output_units, ou);
+        arrput(input_units, iu);
+        arrput(output_units, ou);
     }
 
     if (is_src(id) || is_dst(id)) {
-        assert(input_units.size() == 1);
-        assert(output_units.size() == 1);
-        // assert(arrlen(input_units) == 1);
-        // assert(arrlen(output_units) == 1);
+        assert(arrlen(input_units) == 1);
+        assert(arrlen(output_units) == 1);
+        // There are no route computation stages for terminal nodes, so set the
+        // routed ports for each IU/OU statically here.
         input_units[0].route_port = 0;
         output_units[0].input_port = 0;
     }
 }
 
-Router::~Router()
+void router_destroy(Router *r)
 {
-    for (int port = 0; port < get_radix(); port++) {
-        queue_free(input_units[port].buf);
+    for (int port = 0; port < r->get_radix(); port++) {
+        input_unit_destroy(&r->input_units[port]);
+        output_unit_destroy(&r->output_units[port]);
     }
+    arrfree(r->input_units);
+    arrfree(r->output_units);
+    arrfree(r->input_channels);
+    arrfree(r->output_channels);
 }
 
 void Router::do_reschedule()
 {
-    if (reschedule_next_tick && eventq.curr_time() != last_reschedule_tick) {
-        eventq.reschedule(1, tick_event);
-        // dbg() << "self-rescheduled to " << eventq.curr_time() + 1 <<
+    if (reschedule_next_tick && eventq->curr_time() != last_reschedule_tick) {
+        eventq->reschedule(1, tick_event);
+        // dbg() << "self-rescheduled to " << eventq->curr_time() + 1 <<
         // std::endl;
         // XXX: Hacky!
-        last_reschedule_tick = eventq.curr_time();
+        last_reschedule_tick = eventq->curr_time();
     }
 }
 
@@ -308,13 +327,13 @@ int *source_route_compute(TopoDesc td, int src_id, int dst_id)
 void Router::tick()
 {
     // Make sure this router has not been already ticked in this cycle.
-    if (eventq.curr_time() == last_tick) {
-        // dbg() << "WARN: double tick! curr_time=" << eventq.curr_time()
+    if (eventq->curr_time() == last_tick) {
+        // dbg() << "WARN: double tick! curr_time=" << eventq->curr_time()
         //       << ", last_tick=" << last_tick << std::endl;
-        stat.double_tick_count++;
+        stat->double_tick_count++;
         return;
     }
-    // assert(eventq.curr_time() != last_tick);
+    // assert(eventq->curr_time() != last_tick);
 
     reschedule_next_tick = false;
 
@@ -362,7 +381,7 @@ void Router::tick()
     // Do the rescheduling at here once to prevent flooding the event queue.
     do_reschedule();
 
-    last_tick = eventq.curr_time();
+    last_tick = eventq->curr_time();
 }
 
 ///
