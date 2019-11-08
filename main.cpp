@@ -10,7 +10,7 @@ int main(void) {
     sim.eventq.schedule(0, tick_event_from_id(src_id(0)));
     sim.eventq.schedule(0, tick_event_from_id(src_id(1)));
     sim.eventq.schedule(0, tick_event_from_id(src_id(2)));
-    sim.eventq.schedule(0, tick_event_from_id(src_id(3)));
+    // sim.eventq.schedule(0, tick_event_from_id(src_id(3)));
 
     sim.run(10000);
 

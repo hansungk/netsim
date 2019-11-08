@@ -94,17 +94,15 @@ void topology_destroy(Topology *top)
 
 bool topology_connect(Topology *t, RouterPortPair input, RouterPortPair output)
 {
-    size_t inkey = RPHASH(&input);
-    size_t outkey = RPHASH(&output);
-    if (hmgeti(t->forward_hash, inkey) >= 0 ||
-        hmgeti(t->reverse_hash, outkey) >= 0)
+    if (hmgeti(t->forward_hash, input) >= 0 ||
+        hmgeti(t->reverse_hash, output) >= 0)
         // Bad connectivity: source or destination port is already connected
         return false;
     int uniq = hmlen(t->forward_hash);
     Connection conn = (Connection){.src = input, .dst = output, .uniq = uniq};
-    hmput(t->forward_hash, inkey, conn);
-    hmput(t->reverse_hash, outkey, conn);
-    assert(hmgeti(t->forward_hash, inkey) >= 0);
+    hmput(t->forward_hash, input, conn);
+    hmput(t->reverse_hash, output, conn);
+    assert(hmgeti(t->forward_hash, input) >= 0);
     return true;
 }
 
@@ -165,8 +163,7 @@ Topology topology_ring(int n)
 
 Connection conn_find_forward(Topology *t, RouterPortPair out_port)
 {
-    size_t key = RPHASH(&out_port);
-    ptrdiff_t idx = hmgeti(t->forward_hash, key);
+    ptrdiff_t idx = hmgeti(t->forward_hash, out_port);
     if (idx == -1)
         return not_connected;
     else
@@ -175,8 +172,7 @@ Connection conn_find_forward(Topology *t, RouterPortPair out_port)
 
 Connection conn_find_reverse(Topology *t, RouterPortPair in_port)
 {
-    size_t key = RPHASH(&in_port);
-    ptrdiff_t idx = hmgeti(t->reverse_hash, key);
+    ptrdiff_t idx = hmgeti(t->reverse_hash, in_port);
     if (idx == -1)
         return not_connected;
     else
@@ -854,5 +850,9 @@ void Router::update_states()
 void Router::print_state()
 {
     char s[IDSTRLEN];
-    printf("%s: radix=%d\n", id_str(id, s), radix);
+    printf("[%s]\n", id_str(id, s));
+
+    for (int i = 0; i < radix; i++) {
+        printf("Input[%d]\n", i);
+    }
 }

@@ -14,9 +14,6 @@ struct RouterPortPair {
     int port;
 };
 
-// FIXME: Currently we have no way to cope with hash collisions.
-#define RPHASH(ptr) (stbds_hash_bytes(ptr, sizeof(RouterPortPair), 0))
-
 struct Connection {
     RouterPortPair src;
     RouterPortPair dst;
@@ -25,8 +22,10 @@ struct Connection {
 
 void print_conn(const char *name, Connection conn);
 
+// Maps a RouterPortPair to a Connection.  Used for finding a connection with
+// either end of it as the key.
 struct ConnectionHash {
-    size_t key;
+    RouterPortPair key;
     Connection value;
 };
 
