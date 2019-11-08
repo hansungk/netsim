@@ -277,7 +277,7 @@ Router::Router(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id_,
 
 void router_destroy(Router *r)
 {
-    for (int port = 0; port < r->get_radix(); port++) {
+    for (int port = 0; port < r->radix; port++) {
         input_unit_destroy(&r->input_units[port]);
         output_unit_destroy(&r->output_units[port]);
     }
@@ -360,7 +360,7 @@ void Router::tick()
         // Self-tick autonomously unless all input ports are empty.
         // FIXME: redundant?
         // bool empty = true;
-        // for (int i = 0; i < get_radix(); i++) {
+        // for (int i = 0; i < radix; i++) {
         //     if (!input_units[i].buf.empty()) {
         //         empty = false;
         //         break;
@@ -409,7 +409,7 @@ void Router::source_generate()
         flit_payload_counter++;
     }
 
-    assert(get_radix() == 1);
+    assert(radix == 1);
     Channel *out_ch = output_channels[0];
     out_ch->put(flit);
 
@@ -459,7 +459,7 @@ void Router::destination_consume()
 
 void Router::fetch_flit()
 {
-    for (int iport = 0; iport < get_radix(); iport++) {
+    for (int iport = 0; iport < radix; iport++) {
         Channel *ich = input_channels[iport];
         InputUnit *iu = &input_units[iport];
         auto flit_opt = ich->get();
@@ -495,7 +495,7 @@ void Router::fetch_flit()
 
 void Router::fetch_credit()
 {
-    for (int oport = 0; oport < get_radix(); oport++) {
+    for (int oport = 0; oport < radix; oport++) {
         Channel *och = output_channels[oport];
         Credit c;
         bool got = och->get_credit(&c);
@@ -512,7 +512,7 @@ void Router::fetch_credit()
 
 void Router::credit_update()
 {
-    for (int oport = 0; oport < get_radix(); oport++) {
+    for (int oport = 0; oport < radix; oport++) {
         OutputUnit *ou = &output_units[oport];
         if (!queue_empty(ou->buf_credit)) {
             dprintf(this, "Credit update! credit=%d->%d (oport=%d)\n",
@@ -554,7 +554,7 @@ void Router::credit_update()
 
 void Router::route_compute()
 {
-    for (int port = 0; port < get_radix(); port++) {
+    for (int port = 0; port < radix; port++) {
         InputUnit *iu = &input_units[port];
 
         if (iu->global == STATE_ROUTING) {
@@ -602,61 +602,56 @@ void Router::route_compute()
 }
 
 // This function expects the given output VC to be in the Idle state.
-int Router::vc_arbit_round_robin(int out_port)
+int vc_arbit_round_robin(Router *r, int out_port)
 {
     // Debug: print contenders
     int *v = NULL;
-    for (int i = 0; i < get_radix(); i++) {
-        InputUnit *iu = &input_units[i];
+    for (int i = 0; i < r->radix; i++) {
+        InputUnit *iu = &r->input_units[i];
         if (iu->global == STATE_VCWAIT && iu->route_port == out_port)
             arrput(v, i);
     }
     if (arrlen(v)) {
-        dprintf(this, "VA: competing for oport %d from iports {", out_port);
+        dprintf(r, "VA: competing for oport %d from iports {", out_port);
         for (int i = 0; i < arrlen(v); i++)
             printf("%d,", v[i]);
         printf("}\n");
     }
     arrfree(v);
 
-    int iport = (va_last_grant_input + 1) % get_radix();
-    for (int i = 0; i < get_radix(); i++) {
-        InputUnit *iu = &input_units[iport];
+    int iport = (r->va_last_grant_input + 1) % r->radix;
+    for (int i = 0; i < r->radix; i++) {
+        InputUnit *iu = &r->input_units[iport];
         if (iu->global == STATE_VCWAIT && iu->route_port == out_port) {
             // XXX: is VA stage and VCWait state the same?
             assert(iu->stage == PIPELINE_VA);
-            va_last_grant_input = iport;
+            r->va_last_grant_input = iport;
             return iport;
         }
-        iport = (iport + 1) % get_radix();
+        iport = (iport + 1) % r->radix;
     }
     // Indicates that there was no request for this VC.
     return -1;
 }
 
-// This function expects the given output VC to be in the Idle state.
-int Router::sa_arbit_round_robin(int out_port)
+// This function expects the given output VC to be in the Active state.
+int sa_arbit_round_robin(Router *r, int out_port)
 {
-    int iport = (sa_last_grant_input + 1) % get_radix();
-
-    for (int i = 0; i < get_radix(); i++) {
-        InputUnit *iu = &input_units[iport];
-
+    int iport = (r->sa_last_grant_input + 1) % r->radix;
+    for (int i = 0; i < r->radix; i++) {
+        InputUnit *iu = &r->input_units[iport];
         if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
             iu->global == STATE_ACTIVE) {
-            // dbg() << "SA: granted oport " << out_port << " to iport " <<
-            // iport
-            //       << std::endl;
-            sa_last_grant_input = iport;
+            // dprintf(this, "SA: granted oport %d to iport %d\n", out_port, iport);
+            assert(!queue_empty(iu->buf));
+            r->sa_last_grant_input = iport;
             return iport;
         } else if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
                    iu->global == STATE_CREDWAIT) {
-            dprintf(this, "Credit stall! port=%d\n", iu->route_port);
+            dprintf(r, "Credit stall! port=%d\n", iu->route_port);
         }
-
-        iport = (iport + 1) % get_radix();
+        iport = (iport + 1) % r->radix;
     }
-
     // Indicates that there was no request for this VC.
     return -1;
 }
@@ -665,13 +660,13 @@ void Router::vc_alloc()
 {
     // dbg() << "VC allocation\n";
 
-    for (int oport = 0; oport < get_radix(); oport++) {
+    for (int oport = 0; oport < radix; oport++) {
         OutputUnit *ou = &output_units[oport];
 
         // Only do arbitration for inactive output VCs.
         if (ou->global == STATE_IDLE) {
             // Arbitration
-            int iport = vc_arbit_round_robin(oport);
+            int iport = vc_arbit_round_robin(this, oport);
 
             if (iport == -1) {
                 // dbg() << "no pending VC request for oport=" << oport <<
@@ -706,13 +701,13 @@ void Router::vc_alloc()
 
 void Router::switch_alloc()
 {
-    for (int oport = 0; oport < get_radix(); oport++) {
+    for (int oport = 0; oport < radix; oport++) {
         OutputUnit *ou = &output_units[oport];
 
         // Only do arbitration for output VCs that has available credits.
         if (ou->global == STATE_ACTIVE) {
             // Arbitration
-            int iport = sa_arbit_round_robin(oport);
+            int iport = sa_arbit_round_robin(this, oport);
 
             if (iport == -1) {
                 // dbg() << "no pending SA request!\n";
@@ -793,7 +788,7 @@ void Router::switch_alloc()
 
 void Router::switch_traverse()
 {
-    for (int iport = 0; iport < get_radix(); iport++) {
+    for (int iport = 0; iport < radix; iport++) {
         InputUnit *iu = &input_units[iport];
 
         if (iu->st_ready) {
@@ -833,7 +828,7 @@ void Router::update_states()
 {
     bool changed = false;
 
-    for (int port = 0; port < get_radix(); port++) {
+    for (int port = 0; port < radix; port++) {
         InputUnit *iu = &input_units[port];
         OutputUnit *ou = &output_units[port];
         if (iu->global != iu->next_global) {

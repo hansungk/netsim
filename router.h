@@ -187,14 +187,7 @@ struct Router {
     void switch_traverse();
     void update_states();
 
-    // Allocators and arbiters
-    int vc_arbit_round_robin(int out_port);
-    int sa_arbit_round_robin(int out_port);
-
     void print_state();
-
-    // Misc
-    int get_radix() const { return arrlen(input_units); }
 
     // Mark self-reschedule on the next tick
     void mark_reschedule() { reschedule_next_tick = true; }
@@ -208,7 +201,7 @@ struct Router {
     Alloc *flit_allocator;
     Stat *stat;
     TopoDesc top_desc;
-    size_t input_buf_size = 100;
+    size_t input_buf_size = 1;
     long last_tick = -1; // record the last tick time to prevent double-tick in
                          // single cycle
     long flit_payload_counter = 0; // for simple payload generation
@@ -225,6 +218,10 @@ struct Router {
     int va_last_grant_input;
     int sa_last_grant_input;
 };
+
+// Allocators and arbiters.
+int vc_arbit_round_robin(Router *r, int out_port);
+int sa_arbit_round_robin(Router *r, int out_port);
 
 void router_destroy(Router *r);
 
