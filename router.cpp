@@ -207,6 +207,28 @@ char *flit_str(const Flit *flit, char *s)
     return s;
 }
 
+char *globalstate_str(GlobalState state, char *s)
+{
+    switch (state) {
+    case STATE_IDLE:
+        snprintf(s, IDSTRLEN, "I");
+        break;
+    case STATE_ROUTING:
+        snprintf(s, IDSTRLEN, "R");
+        break;
+    case STATE_VCWAIT:
+        snprintf(s, IDSTRLEN, "V");
+        break;
+    case STATE_ACTIVE:
+        snprintf(s, IDSTRLEN, "A");
+        break;
+    case STATE_CREDWAIT:
+        snprintf(s, IDSTRLEN, "C");
+        break;
+    }
+    return s;
+}
+
 static InputUnit input_unit_create(int bufsize)
 {
     Flit **buf = NULL;
@@ -849,31 +871,20 @@ void router_print_state(Router *r)
 
     for (int i = 0; i < r->radix; i++) {
         InputUnit *iu = &r->input_units[i];
-
-        switch (iu->global) {
-        case STATE_IDLE:
-            snprintf(s, IDSTRLEN, "I");
-            break;
-        case STATE_ROUTING:
-            snprintf(s, IDSTRLEN, "R");
-            break;
-        case STATE_VCWAIT:
-            snprintf(s, IDSTRLEN, "V");
-            break;
-        case STATE_ACTIVE:
-            snprintf(s, IDSTRLEN, "A");
-            break;
-        case STATE_CREDWAIT:
-            snprintf(s, IDSTRLEN, "C");
-            break;
-        }
-
-        printf("Input[%d]: [%s] {", i, s);
+        printf(" Input[%d]: [%s] R=%2d {", i, globalstate_str(iu->global, s),
+               iu->route_port);
         for (long i = queue_fronti(iu->buf); i != queue_backi(iu->buf);
              i = (i + 1) % queue_cap(iu->buf)) {
             Flit *flit = iu->buf[i];
             printf("%s,", flit_str(flit, s));
         }
         printf("}\n");
+    }
+
+    for (int i = 0; i < r->radix; i++) {
+        OutputUnit *ou = &r->output_units[i];
+        printf("Output[%d]: [%s] I=%2d, C=%2d\n", i,
+               globalstate_str(ou->global, s), ou->input_port,
+               ou->credit_count);
     }
 }
