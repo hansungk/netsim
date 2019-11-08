@@ -4,8 +4,9 @@
 
 void print_conn(const char *name, Connection conn);
 
-Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
-    : topology(top)
+Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
+         Topology &top)
+    : debug_mode(debug_mode), topology(top)
 {
     flit_allocator = alloc_create(sizeof(Flit));
 
@@ -98,13 +99,71 @@ Sim::Sim(int terminal_count, int router_count, int radix, Topology &top)
     }
 }
 
-void Sim::run(long until) {
+// Returns 1 if the simulation is NOT terminated, 0 otherwise.
+int sim_debug_step(Sim *sim)
+{
+    char line[1024] = {0};
+
+    printf("(@%ld) > ", sim->eventq.curr_time());
+    fgets(line, 100, stdin);
+    char *nl = strchr(line, '\n');
+    if (nl) *nl = '\0';
+
+    if (!strcmp(line, "q")) {
+        return 0;
+    } else if (strlen(line) == 0) {
+        return 1;
+    } else if (!strcmp(line, "n")) {
+        long until = sim->eventq.curr_time();
+        // Corner case: if simulation just started, curr_time() is 0, so fix it
+        // to 1.
+        if (until == 0) until = 1;
+        sim->run_until(until);
+        return 1;
+    } else if (!strcmp(line, "p")) {
+        for (long i = 0; i < arrlen(sim->routers); i++) {
+            router_print_state(&sim->routers[i]);
+        }
+        return 1;
+    }
+    // Commands with arguments.
+    char *tok = strtok(line, " ");
+    if (!strcmp(tok, "c")) {
+        tok = strtok(NULL, " ");
+        if (!tok) {
+            printf("No argument given.\n");
+            return 1;
+        }
+        char *endptr;
+        long until = strtol(tok, &endptr, 10);
+        if (*endptr != '\0') {
+            printf("Invalid command.\n");
+            return 1;
+        }
+        sim->run_until(until);
+        return 1;
+    }
+    // Command not understood.
+    printf("Unknown command.\n");
+    return 1;
+}
+
+void Sim::run(long until)
+{
+    if (debug_mode) {
+        while (sim_debug_step(this));
+    } else {
+        run_until(until);
+    }
+}
+
+void Sim::run_until(long until)
+{
     while (!eventq.empty()) {
         auto e = eventq.pop();
         // Terminate simulation if the specified time is expired
-        if (0 < until && until < eventq.curr_time()) {
+        if (0 <= until && until < eventq.curr_time())
             break;
-        }
         process(e);
     }
 }
