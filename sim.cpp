@@ -99,6 +99,17 @@ Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
     }
 }
 
+void sim_run_until(Sim *sim, long until)
+{
+    while (!sim->eventq.empty()) {
+        // Terminate simulation if the specified time is expired
+        if (0 <= until && until < sim->eventq.next_time())
+            break;
+        Event e = sim->eventq.pop();
+        sim->process(e);
+    }
+}
+
 // Returns 1 if the simulation is NOT terminated, 0 otherwise.
 int sim_debug_step(Sim *sim)
 {
@@ -117,8 +128,8 @@ int sim_debug_step(Sim *sim)
         long until = sim->eventq.curr_time();
         // Corner case: if simulation just started, curr_time() is 0, so fix it
         // to 1.
-        if (until == 0) until = 1;
-        sim->run_until(until);
+        // if (until == 0) until = 1;
+        sim_run_until(sim, until + 1);
         return 1;
     } else if (!strcmp(line, "p")) {
         for (long i = 0; i < arrlen(sim->routers); i++) {
@@ -126,6 +137,7 @@ int sim_debug_step(Sim *sim)
         }
         return 1;
     }
+
     // Commands with arguments.
     char *tok = strtok(line, " ");
     if (!strcmp(tok, "c")) {
@@ -140,9 +152,10 @@ int sim_debug_step(Sim *sim)
             printf("Invalid command.\n");
             return 1;
         }
-        sim->run_until(until);
+        sim_run_until(sim, until);
         return 1;
     }
+
     // Command not understood.
     printf("Unknown command.\n");
     return 1;
@@ -153,18 +166,7 @@ void Sim::run(long until)
     if (debug_mode) {
         while (sim_debug_step(this));
     } else {
-        run_until(until);
-    }
-}
-
-void Sim::run_until(long until)
-{
-    while (!eventq.empty()) {
-        auto e = eventq.pop();
-        // Terminate simulation if the specified time is expired
-        if (0 <= until && until < eventq.curr_time())
-            break;
-        process(e);
+        sim_run_until(this, until);
     }
 }
 

@@ -18,7 +18,6 @@ struct Sim {
 
     // Run the simulator.
     void run(long until);
-    void run_until(long until);
     // Process an event.
     void process(const Event &e);
     void report() const;

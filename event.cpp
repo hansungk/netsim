@@ -36,3 +36,8 @@ Event EventQueue::pop() {
     queue.pop();
     return e;
 }
+
+long EventQueue::next_time() const
+{
+    return queue.top().first;
+}

@@ -52,6 +52,9 @@ public:
     Event pop();
 
     long curr_time() const { return time_; }
+    // This is mainly used for the debugger, where it should be able to process
+    // all events at a specific time and stop right before the time changes.
+    long next_time() const;
 
 private:
     using TimeEventPair = std::pair<long, Event>;
