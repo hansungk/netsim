@@ -825,9 +825,8 @@ void Router::switch_traverse()
             auto dst_pair = out_ch->conn.dst;
 
             char s[IDSTRLEN], s2[IDSTRLEN];
-            dprintf(this, "Switch traverse: %s\n", flit_str(flit, s));
-            dprintf(this, "Flit %s sent to {%s, %d}\n", flit_str(flit, s),
-                    id_str(dst_pair.id, s2), dst_pair.port);
+            dprintf(this, "Switch traverse: %s sent to {%s, %d}\n",
+                    flit_str(flit, s), id_str(dst_pair.id, s2), dst_pair.port);
 
             // With output speedup:
             // auto &ou = output_units[iu->route_port];

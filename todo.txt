@@ -5,6 +5,7 @@
   input_buf_size >= 8.
 
 * TODO
+- Infinite source queue and accurate terminal instrumentation
 - Topology for 2-D torus
 - Routing for 2-D torus
 

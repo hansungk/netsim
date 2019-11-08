@@ -62,7 +62,7 @@ private:
         return p1.first > p2.first;
     };
 
-    long time_{0};
+    long time_{-1};
     std::priority_queue<TimeEventPair, std::vector<TimeEventPair>,
                         decltype(cmp)>
         queue{cmp};

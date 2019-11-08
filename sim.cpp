@@ -126,9 +126,6 @@ int sim_debug_step(Sim *sim)
         return 1;
     } else if (!strcmp(line, "n")) {
         long until = sim->eventq.curr_time();
-        // Corner case: if simulation just started, curr_time() is 0, so fix it
-        // to 1.
-        // if (until == 0) until = 1;
         sim_run_until(sim, until + 1);
         return 1;
     } else if (!strcmp(line, "p")) {
