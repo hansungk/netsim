@@ -1,33 +1,20 @@
 #ifndef EVENT_H
 #define EVENT_H
 
-#include <functional>
 #include <queue>
-#include <iostream>
 
 #define IDSTRLEN 20
 
 enum IdType {
-  ID_SRC,
-  ID_DST,
-  ID_RTR,
+    ID_SRC,
+    ID_DST,
+    ID_RTR,
 };
 
 struct Id {
-  IdType type;
-  int value;
-  bool operator<(const Id &b) const
-  {
-    return (type < b.type) || (type == b.type && value < b.value);
-  }
-  bool operator==(const Id &b) const
-  {
-    return type == b.type && value == b.value;
-  }
+    IdType type;
+    int value;
 };
-
-#define ID_HASH(id) (((id).type << (sizeof((id).value) * 8)) | (id).value)
-
 
 inline bool is_src(Id id) { return id.type == ID_SRC; };
 inline bool is_dst(Id id) { return id.type == ID_DST; };
@@ -39,16 +26,16 @@ static inline Id rtr_id(int id) { return (Id){.type = ID_RTR, .value = id}; }
 
 char *id_str(Id id, char *s);
 
-std::ostream &operator<<(std::ostream &out, const Id &id);
-
 struct Router;
+
+void tick_func(Router *);
 
 class Event {
 public:
-    Event(Id i, std::function<void(Router &)> f_) : id(i), f(f_) {}
+    Event(Id i, void (*f_)(Router *)) : id(i), f(f_) {}
 
     Id id;                           // target router ID
-    std::function<void(Router &)> f; // callback on a specific router
+    void (*f)(Router *);
 };
 
 class EventQueue {
@@ -65,7 +52,6 @@ public:
     Event pop();
 
     long curr_time() const { return time_; }
-    void print_and_exit();
 
 private:
     using TimeEventPair = std::pair<long, Event>;

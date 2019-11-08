@@ -1,7 +1,6 @@
 #include "sim.h"
 #include "router.h"
 #include "queue.h"
-#include <iostream>
 
 int main(void) {
     Topology top = topology_ring(4);

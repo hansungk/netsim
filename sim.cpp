@@ -1,6 +1,6 @@
 #include "sim.h"
-#include <cassert>
-#include <iostream>
+#include <stdio.h>
+#include <assert.h>
 
 void print_conn(const char *name, Connection conn);
 
@@ -110,34 +110,36 @@ void Sim::run(long until) {
 }
 
 void Sim::report() const {
-    std::cout << std::endl;
-    std::cout << "==== SIMULATION RESULT ====\n";
+    char s[IDSTRLEN];
 
-    std::cout << "# of ticks: " << eventq.curr_time() << std::endl;
-    std::cout << "# of double ticks: " << stat.double_tick_count << std::endl;
-    std::cout << std::endl;
+    printf("\n");
+    printf("==== SIMULATION RESULT ====\n");
+
+    printf("# of ticks: %ld\n", eventq.curr_time());
+    printf("# of double ticks: %ld\n", stat.double_tick_count);
+    printf("\n");
 
     for (long i = 0; i < arrlen(src_nodes); i++) {
         Router *src = &src_nodes[i];
-        std::cout << "[" << src->id << "] ";
-        std::cout << "# of flits generated: " << src->flit_gen_count << std::endl;
+        printf("[%s] ", id_str(src->id, s));
+        printf("# of flits generated: %ld\n", src->flit_gen_count);
     }
 
     for (long i = 0; i < arrlen(dst_nodes); i++) {
         Router *dst = &dst_nodes[i];
-        std::cout << "[" << dst->id << "] ";
-        std::cout << "# of flits arrived: " << dst->flit_arrive_count << std::endl;
+        printf("[%s] ", id_str(dst->id, s));
+        printf("# of flits arrived: %ld\n", dst->flit_arrive_count);
     }
 }
 
 void Sim::process(const Event &e)
 {
     if (is_src(e.id)) {
-        e.f(src_nodes[e.id.value]);
+        e.f(&src_nodes[e.id.value]);
     } else if (is_dst(e.id)) {
-        e.f(dst_nodes[e.id.value]);
+        e.f(&dst_nodes[e.id.value]);
     } else if (is_rtr(e.id)) {
-        e.f(routers[e.id.value]);
+        e.f(&routers[e.id.value]);
     } else {
         assert(false);
     }

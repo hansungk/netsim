@@ -1,7 +1,8 @@
 #include "router.h"
 #include "queue.h"
 #include "stb_ds.h"
-#include <cassert>
+#include <stdio.h>
+#include <assert.h>
 
 static void dprintf(Router *r, const char *fmt, ...)
 {
@@ -13,9 +14,14 @@ static void dprintf(Router *r, const char *fmt, ...)
     va_end(args);
 }
 
+void tick_func(Router *r)
+{
+    r->tick();
+}
+
 Event tick_event_from_id(Id id)
 {
-    return Event{id, [](Router &r) { r.tick(); }};
+    return Event{id, tick_func};
 }
 
 Channel::Channel(EventQueue *eq, long dl, const Connection conn)
