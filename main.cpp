@@ -10,8 +10,15 @@ int main(void) {
     sim.eventq.schedule(0, tick_event_from_id(src_id(0)));
     sim.eventq.schedule(0, tick_event_from_id(src_id(1)));
     sim.eventq.schedule(0, tick_event_from_id(src_id(2)));
+    sim.eventq.schedule(0, tick_event_from_id(src_id(3)));
 
     sim.run(10000);
+
+    for (long i = 0; i < arrlen(sim.routers); i++) {
+        sim.routers[i].print_state();
+    }
+
+    sim.report();
 
     sim_destroy(&sim);
     topology_destroy(&top);

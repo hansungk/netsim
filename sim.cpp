@@ -107,8 +107,6 @@ void Sim::run(long until) {
         }
         process(e);
     }
-
-    report();
 }
 
 void Sim::report() const {

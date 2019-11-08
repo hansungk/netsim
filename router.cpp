@@ -5,9 +5,8 @@
 
 static void dprintf(Router *r, const char *fmt, ...)
 {
-    printf("[@%3ld] [", r->eventq->curr_time());
-    print_id(r->id);
-    printf("] ");
+    char s[IDSTRLEN];
+    printf("[@%3ld] [%s] ", r->eventq->curr_time(), id_str(r->id, s));
     va_list args;
     va_start(args, fmt);
     vprintf(fmt, args);
@@ -245,7 +244,7 @@ static void output_unit_destroy(OutputUnit *ou)
 
 Router::Router(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id_,
                int radix, Channel **in_chs, Channel **out_chs)
-    : id(id_), eventq(eq), flit_allocator(fa), stat(st), top_desc(td),
+    : id(id_), radix(radix), eventq(eq), flit_allocator(fa), stat(st), top_desc(td),
       va_last_grant_input(0), sa_last_grant_input(0)
 {
     input_channels = NULL;
@@ -447,9 +446,9 @@ void Router::destination_consume()
         in_ch->put_credit(Credit{});
 
         auto src_pair = in_ch->conn.src;
-        dprintf(this, "Credit sent to {");
-        print_id(src_pair.id);
-        printf(", %d}\n", src_pair.port);
+        char s[IDSTRLEN];
+        dprintf(this, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
+                src_pair.port);
 
         // Self-tick autonomously unless all input ports are empty.
         mark_reschedule();
@@ -467,12 +466,12 @@ void Router::fetch_flit()
             dprintf(this, "Fetched flit ");
             Flit *flit = flit_opt;
             print_flit(flit);
-            printf(", buf.size()=%zd\n", queue_len(iu->buf));
+            printf(", buf[%d].size()=%zd\n", iport, queue_len(iu->buf));
 
             // If the buffer was empty, this is the only place to kickstart the
             // pipeline.
             if (queue_empty(iu->buf)) {
-                dprintf(this, "fetch_flit: buf was empty\n");
+                // dprintf(this, "fetch_flit: buf was empty\n");
                 // If the input unit state was also idle (empty != idle!), set
                 // the stage to RC.
                 if (iu->next_global == STATE_IDLE) {
@@ -501,6 +500,7 @@ void Router::fetch_credit()
         if (got) {
             OutputUnit *ou = &output_units[oport];
             dprintf(this, "Fetched credit, oport=%d\n", oport);
+            // In any time, there should be at most 1 credit in the buffer.
             assert(queue_empty(ou->buf_credit));
             queue_put(ou->buf_credit, c);
             mark_reschedule();
@@ -534,11 +534,11 @@ void Router::credit_update()
                     ou->next_global = STATE_ACTIVE;
                 }
                 mark_reschedule();
-                dprintf(this, "credit update with kickstart! (iport=%d)\n",
-                        ou->input_port);
+                // dprintf(this, "credit update with kickstart! (iport=%d)\n",
+                //         ou->input_port);
             } else {
-                dprintf(this, "credit update, but no kickstart (credit=%d)\n",
-                        ou->credit_count);
+                // dprintf(this, "credit update, but no kickstart (credit=%d)\n",
+                //         ou->credit_count);
             }
 
             ou->credit_count++;
@@ -807,11 +807,11 @@ void Router::switch_traverse()
             Channel *out_ch = output_channels[iu->route_port];
             out_ch->put(flit);
             auto dst_pair = out_ch->conn.dst;
+            char s[IDSTRLEN];
             dprintf(this, "Flit ");
             print_flit(flit);
-            printf(" sent to {");
-            print_id(dst_pair.id);
-            printf(", %d}\n", dst_pair.port);
+            printf(" sent to {%s, %d}\n", id_str(dst_pair.id, s),
+                   dst_pair.port);
 
             // With output speedup:
             // auto &ou = output_units[iu->route_port];
@@ -821,9 +821,8 @@ void Router::switch_traverse()
             Channel *in_ch = input_channels[iport];
             in_ch->put_credit(Credit{});
             auto src_pair = in_ch->conn.src;
-            dprintf(this, "Credit sent to {");
-            print_id(src_pair.id);
-            printf(", %d}\n", src_pair.port);
+            dprintf(this, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
+                    src_pair.port);
         }
     }
 }
@@ -850,4 +849,10 @@ void Router::update_states()
     // Reschedule whenever there is one or more state change.
     if (changed)
         mark_reschedule();
+}
+
+void Router::print_state()
+{
+    char s[IDSTRLEN];
+    printf("%s: radix=%d\n", id_str(id, s), radix);
 }

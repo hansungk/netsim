@@ -5,6 +5,8 @@
 #include <queue>
 #include <iostream>
 
+#define IDSTRLEN 20
+
 enum IdType {
   ID_SRC,
   ID_DST,
@@ -35,7 +37,7 @@ static inline Id src_id(int id) { return (Id){.type = ID_SRC, .value = id}; }
 static inline Id dst_id(int id) { return (Id){.type = ID_DST, .value = id}; }
 static inline Id rtr_id(int id) { return (Id){.type = ID_RTR, .value = id}; }
 
-void print_id(Id id);
+char *id_str(Id id, char *s);
 
 std::ostream &operator<<(std::ostream &out, const Id &id);
 

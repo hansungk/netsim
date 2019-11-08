@@ -2,15 +2,17 @@
 #include <cassert>
 #include <iostream>
 
-void print_id(Id id)
+char *id_str(Id id, char *s)
 {
+  int w;
   if (is_src(id))
-    printf("Src ");
+    w = snprintf(s, IDSTRLEN, "Src ");
   else if (is_dst(id))
-    printf("Dst ");
+    w = snprintf(s, IDSTRLEN, "Dst ");
   else
-    printf("Rtr ");
-  printf("%d", id.value);
+    w = snprintf(s, IDSTRLEN, "Rtr ");
+  snprintf(s + w, IDSTRLEN - w, "%d", id.value);
+  return s;
 }
 
 std::ostream &operator<<(std::ostream &out, const Id &id) {

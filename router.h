@@ -192,6 +192,8 @@ struct Router {
     int vc_arbit_round_robin(int out_port);
     int sa_arbit_round_robin(int out_port);
 
+    void print_state();
+
     // Misc
     int get_radix() const { return arrlen(input_units); }
 
@@ -200,6 +202,7 @@ struct Router {
     void do_reschedule();
 
     Id id;                      // router ID
+    int radix;                  // radix
     long flit_arrive_count = 0; // # of flits arrived for the destination node
     long flit_gen_count = 0;    // # of flits generated for the destination node
     EventQueue *eventq;         // reference to the simulator-global event queue
@@ -207,8 +210,8 @@ struct Router {
     Stat *stat;
     TopoDesc top_desc;
     size_t input_buf_size = 100;
-    long last_tick{-1}; // record the last tick time to prevent double-tick in
-                        // single cycle
+    long last_tick = -1; // record the last tick time to prevent double-tick in
+                         // single cycle
     long flit_payload_counter = 0; // for simple payload generation
     bool reschedule_next_tick =
         false; // marks whether to self-tick at the next cycle
