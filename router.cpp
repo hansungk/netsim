@@ -203,7 +203,10 @@ void flit_destroy(Flit *flit)
 char *flit_str(const Flit *flit, char *s)
 {
     // FIXME: Rename IDSTRLEN!
-    snprintf(s, IDSTRLEN, "{%d.p%ld}", flit->route_info.src, flit->payload);
+    if (flit)
+        snprintf(s, IDSTRLEN, "{%d.p%ld}", flit->route_info.src, flit->payload);
+    else
+        snprintf(s, IDSTRLEN, "");
     return s;
 }
 
@@ -878,7 +881,7 @@ void router_print_state(Router *r)
             Flit *flit = iu->buf[i];
             printf("%s,", flit_str(flit, s));
         }
-        printf("}\n");
+        printf("} ST:%s\n", flit_str(iu->st_ready, s));
     }
 
     for (int i = 0; i < r->radix; i++) {
