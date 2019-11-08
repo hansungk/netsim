@@ -200,9 +200,11 @@ void flit_destroy(Flit *flit)
     free(flit);
 }
 
-void print_flit(const Flit *flit)
+char *flit_str(const Flit *flit, char *s)
 {
-    printf("{%d.p%ld}", flit->route_info.src, flit->payload);
+    // FIXME: Rename IDSTRLEN!
+    snprintf(s, IDSTRLEN, "{%d.p%ld}", flit->route_info.src, flit->payload);
+    return s;
 }
 
 static InputUnit input_unit_create(int bufsize)
@@ -420,9 +422,8 @@ void Router::source_generate()
 
     flit_gen_count++;
 
-    dprintf(this, "Flit created and sent: ");
-    print_flit(flit);
-    printf("\n");
+    char s[IDSTRLEN];
+    dprintf(this, "Flit created and sent: %s\n", flit_str(flit, s));
 
     // TODO: for now, infinitely generate flits.
     mark_reschedule();
@@ -434,10 +435,9 @@ void Router::destination_consume()
 
     if (!queue_empty(iu->buf)) {
         Flit *flit = queue_front(iu->buf);
+        char s[IDSTRLEN];
         dprintf(this, "Destination buf size=%zd\n", queue_len(iu->buf));
-        dprintf(this, "Flit arrived: ");
-        print_flit(flit);
-        printf("\n");
+        dprintf(this, "Flit arrived: %s\n", flit_str(flit, s));
         flit_destroy(flit);
 
         flit_arrive_count++;
@@ -448,7 +448,6 @@ void Router::destination_consume()
         in_ch->put_credit(Credit{});
 
         auto src_pair = in_ch->conn.src;
-        char s[IDSTRLEN];
         dprintf(this, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
                 src_pair.port);
 
@@ -465,10 +464,10 @@ void Router::fetch_flit()
         auto flit_opt = ich->get();
 
         if (flit_opt) {
-            dprintf(this, "Fetched flit ");
             Flit *flit = flit_opt;
-            print_flit(flit);
-            printf(", buf[%d].size()=%zd\n", iport, queue_len(iu->buf));
+            char s[IDSTRLEN];
+            dprintf(this, "Fetched flit %s, buf[%d].size()=%zd\n",
+                    flit_str(flit, s), iport, queue_len(iu->buf));
 
             // If the buffer was empty, this is the only place to kickstart the
             // pipeline.
@@ -559,9 +558,8 @@ void Router::route_compute()
 
         if (iu->global == STATE_ROUTING) {
             Flit *flit = queue_front(iu->buf);
-            dprintf(this, "Route computation: ");
-            print_flit(flit);
-            printf("\n");
+            char s[IDSTRLEN];
+            dprintf(this, "Route computation: %s\n", flit_str(flit, s));
             assert(!queue_empty(iu->buf));
 
             // TODO: Simple algorithmic routing: keep rotating clockwise until
@@ -587,10 +585,8 @@ void Router::route_compute()
             dprintf(this, "RC: path size = %zd\n",
                     arrlen(flit->route_info.path));
             iu->route_port = flit->route_info.path[flit->route_info.idx];
-            dprintf(this, "RC success for ");
-            print_flit(flit);
-            printf(" (idx=%zu, oport=%d)\n", flit->route_info.idx,
-                   iu->route_port);
+            dprintf(this, "RC success for %s (idx=%zu, oport=%d)\n",
+                    flit_str(flit, s), flit->route_info.idx, iu->route_port);
             flit->route_info.idx++;
 
             // RC -> VA transition
@@ -640,10 +636,12 @@ int sa_arbit_round_robin(Router *r, int out_port)
     int iport = (r->sa_last_grant_input + 1) % r->radix;
     for (int i = 0; i < r->radix; i++) {
         InputUnit *iu = &r->input_units[iport];
+        // We should check for queue non-emptiness, as it is possible for active
+        // input units to have no flits in them because of contention in the
+        // upstream router.
         if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
-            iu->global == STATE_ACTIVE) {
-            // dprintf(this, "SA: granted oport %d to iport %d\n", out_port, iport);
-            assert(!queue_empty(iu->buf));
+            iu->global == STATE_ACTIVE && !queue_empty(iu->buf)) {
+            dprintf(r, "SA: granted oport %d to iport %d\n", out_port, iport);
             r->sa_last_grant_input = iport;
             return iport;
         } else if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
@@ -674,9 +672,9 @@ void Router::vc_alloc()
             } else {
                 InputUnit *iu = &input_units[iport];
 
-                dprintf(this, "VA: success for ");
-                print_flit(queue_front(iu->buf));
-                printf(" from iport %d to oport %d\n", iport, oport);
+                char s[IDSTRLEN];
+                dprintf(this, "VA: success for %s from iport %d to oport %d\n",
+                        flit_str(queue_front(iu->buf), s), iport, oport);
 
                 // We now have the VC, but we cannot proceed to the SA stage if
                 // there is no credit.
@@ -715,9 +713,9 @@ void Router::switch_alloc()
                 // SA success!
                 InputUnit *iu = &input_units[iport];
 
-                dprintf(this, "SA success for ");
-                print_flit(queue_front(iu->buf));
-                printf(" from iport %d to oport %d\n", iport, oport);
+                char s[IDSTRLEN];
+                dprintf(this, "SA success for %s from iport %d to oport %d\n",
+                        flit_str(queue_front(iu->buf), s), iport, oport);
 
                 // Input units in the active state *may* be empty, e.g. if
                 // their body flits have not yet arrived.  Check that.
@@ -729,9 +727,8 @@ void Router::switch_alloc()
                 // The flit leaves the buffer here.
                 Flit *flit = queue_front(iu->buf);
 
-                dprintf(this, "Switch allocation success: ");
-                print_flit(flit);
-                printf("\n");
+                dprintf(this, "Switch allocation success: %s\n",
+                        flit_str(flit, s));
 
                 assert(iu->global == STATE_ACTIVE);
                 queue_pop(iu->buf);
@@ -794,9 +791,6 @@ void Router::switch_traverse()
         if (iu->st_ready) {
             Flit *flit = iu->st_ready;
             iu->st_ready = NULL;
-            dprintf(this, "Switch traverse: ");
-            print_flit(flit);
-            printf("\n");
 
             // No output speedup: there is no need for an output buffer
             // (Ch17.3).  Flits that exit the switch are directly placed on the
@@ -804,11 +798,11 @@ void Router::switch_traverse()
             Channel *out_ch = output_channels[iu->route_port];
             out_ch->put(flit);
             auto dst_pair = out_ch->conn.dst;
-            char s[IDSTRLEN];
-            dprintf(this, "Flit ");
-            print_flit(flit);
-            printf(" sent to {%s, %d}\n", id_str(dst_pair.id, s),
-                   dst_pair.port);
+
+            char s[IDSTRLEN], s2[IDSTRLEN];
+            dprintf(this, "Switch traverse: %s\n", flit_str(flit, s));
+            dprintf(this, "Flit %s sent to {%s, %d}\n", flit_str(flit, s),
+                    id_str(dst_pair.id, s2), dst_pair.port);
 
             // With output speedup:
             // auto &ou = output_units[iu->route_port];
@@ -848,12 +842,38 @@ void Router::update_states()
         mark_reschedule();
 }
 
-void Router::print_state()
+void router_print_state(Router *r)
 {
     char s[IDSTRLEN];
-    printf("[%s]\n", id_str(id, s));
+    printf("[%s]\n", id_str(r->id, s));
 
-    for (int i = 0; i < radix; i++) {
-        printf("Input[%d]\n", i);
+    for (int i = 0; i < r->radix; i++) {
+        InputUnit *iu = &r->input_units[i];
+
+        switch (iu->global) {
+        case STATE_IDLE:
+            snprintf(s, IDSTRLEN, "I");
+            break;
+        case STATE_ROUTING:
+            snprintf(s, IDSTRLEN, "R");
+            break;
+        case STATE_VCWAIT:
+            snprintf(s, IDSTRLEN, "V");
+            break;
+        case STATE_ACTIVE:
+            snprintf(s, IDSTRLEN, "A");
+            break;
+        case STATE_CREDWAIT:
+            snprintf(s, IDSTRLEN, "C");
+            break;
+        }
+
+        printf("Input[%d]: [%s] {", i, s);
+        for (long i = queue_fronti(iu->buf); i != queue_backi(iu->buf);
+             i = (i + 1) % queue_cap(iu->buf)) {
+            Flit *flit = iu->buf[i];
+            printf("%s,", flit_str(flit, s));
+        }
+        printf("}\n");
     }
 }

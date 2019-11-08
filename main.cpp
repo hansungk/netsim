@@ -14,7 +14,7 @@ int main(void) {
     sim.run(10000);
 
     for (long i = 0; i < arrlen(sim.routers); i++) {
-        sim.routers[i].print_state();
+        router_print_state(&sim.routers[i]);
     }
 
     sim.report();

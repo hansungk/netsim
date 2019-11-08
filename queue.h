@@ -22,6 +22,9 @@ template <class T> static T *queue_init_wrapper(T *a, size_t elemsize, size_t le
                         (queue_header(a)->back + 1) % queue_header(a)->cap,    \
                     (a)))
 #define queue_front(a) (a[queue_header(a)->front])
+#define queue_fronti(a) (queue_header(a)->front)
+#define queue_backi(a) (queue_header(a)->back)
+#define queue_cap(a) (queue_header(a)->cap)
 #define queue_pop queue_popf
 
 #define queue_header(t) ((Queue *)(t) - 1)

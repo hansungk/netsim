@@ -93,7 +93,7 @@ struct Flit {
 };
 
 Flit *flit_create(FlitType t, int src, int dst, long p);
-void print_flit(const Flit *flit);
+char *flit_str(const Flit *flit, char *s);
 
 struct Credit {
     // VC is omitted, as we only have one VC per a physical channel.
@@ -187,8 +187,6 @@ struct Router {
     void switch_traverse();
     void update_states();
 
-    void print_state();
-
     // Mark self-reschedule on the next tick
     void mark_reschedule() { reschedule_next_tick = true; }
     void do_reschedule();
@@ -222,6 +220,8 @@ struct Router {
 // Allocators and arbiters.
 int vc_arbit_round_robin(Router *r, int out_port);
 int sa_arbit_round_robin(Router *r, int out_port);
+
+void router_print_state(Router *r);
 
 void router_destroy(Router *r);
 
