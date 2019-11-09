@@ -175,9 +175,6 @@ struct Router {
     Router(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id, int radix,
            Channel **in_chs, Channel **out_chs);
 
-    // Tick event
-    void tick();
-
     void source_generate();
     void destination_consume();
     void fetch_flit();
@@ -189,8 +186,6 @@ struct Router {
     void switch_traverse();
     void update_states();
 
-    // Mark self-reschedule on the next tick
-    void mark_reschedule() { reschedule_next_tick = true; }
     void do_reschedule();
 
     Id id;                      // router ID
@@ -218,6 +213,9 @@ struct Router {
     int va_last_grant_input;
     int sa_last_grant_input;
 };
+
+// Tick a router.
+void router_tick(Router *r);
 
 // Allocators and arbiters.
 int vc_arbit_round_robin(Router *r, int out_port);

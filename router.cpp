@@ -14,14 +14,9 @@ static void dprintf(Router *r, const char *fmt, ...)
     va_end(args);
 }
 
-void tick_func(Router *r)
-{
-    r->tick();
-}
-
 Event tick_event_from_id(Id id)
 {
-    return Event{id, tick_func};
+    return Event{id, router_tick};
 }
 
 Channel::Channel(EventQueue *eq, long dl, const Connection conn)
@@ -347,42 +342,46 @@ int *source_route_compute(TopoDesc td, int src_id, int dst_id)
     return path;
 }
 
-void Router::tick()
+// Tick a router. This function does all of the work that a router has to
+// process in a single cycle, i.e. all of its pipeline stages and statistics
+// update. This simplifies the event system by streamlining event types into a
+// single one, and making the order between them the only thing for us to
+// consider.
+void router_tick(Router *r)
 {
     // Make sure this router has not been already ticked in this cycle.
-    if (eventq->curr_time() == last_tick) {
+    if (r->eventq->curr_time() == r->last_tick) {
         // dbg() << "WARN: double tick! curr_time=" << eventq->curr_time()
         //       << ", last_tick=" << last_tick << std::endl;
-        stat->double_tick_count++;
+        r->stat->double_tick_count++;
         return;
     }
-    // assert(eventq->curr_time() != last_tick);
 
-    reschedule_next_tick = false;
+    r->reschedule_next_tick = false;
 
     // Different tick actions for different types of node.
-    if (is_src(id)) {
-        source_generate();
+    if (is_src(r->id)) {
+        r->source_generate();
         // Source nodes also needs to manage credit in order to send flits at
         // the right time.
-        credit_update();
-        fetch_credit();
-    } else if (is_dst(id)) {
-        destination_consume();
-        fetch_flit();
+        r->credit_update();
+        r->fetch_credit();
+    } else if (is_dst(r->id)) {
+        r->destination_consume();
+        r->fetch_flit();
     } else {
         // Process each pipeline stage.
         // Stages are processed in reverse dependency order to prevent coherence
         // bug.  E.g., if a flit succeeds in route_compute() and advances to the
         // VA stage, and then vc_alloc() is called, it would then get processed
         // again in the same cycle.
-        switch_traverse();
-        switch_alloc();
-        vc_alloc();
-        route_compute();
-        credit_update();
-        fetch_credit();
-        fetch_flit();
+        r->switch_traverse();
+        r->switch_alloc();
+        r->vc_alloc();
+        r->route_compute();
+        r->credit_update();
+        r->fetch_credit();
+        r->fetch_flit();
 
         // Self-tick autonomously unless all input ports are empty.
         // FIXME: redundant?
@@ -394,17 +393,17 @@ void Router::tick()
         //     }
         // }
         // if (!empty) {
-        //     mark_reschedule();
+        //     reschedule_next_tick = true;
         // }
     }
 
     // Update the global state of each input/output unit.
-    update_states();
+    r->update_states();
 
     // Do the rescheduling at here once to prevent flooding the event queue.
-    do_reschedule();
+    r->do_reschedule();
 
-    last_tick = eventq->curr_time();
+    r->last_tick = r->eventq->curr_time();
 }
 
 ///
@@ -451,7 +450,7 @@ void Router::source_generate()
     dprintf(this, "Flit created and sent: %s\n", flit_str(flit, s));
 
     // TODO: for now, infinitely generate flits.
-    mark_reschedule();
+    reschedule_next_tick = true;
 }
 
 void Router::destination_consume()
@@ -477,7 +476,7 @@ void Router::destination_consume()
                 src_pair.port);
 
         // Self-tick autonomously unless all input ports are empty.
-        mark_reschedule();
+        reschedule_next_tick = true;
     }
 }
 
@@ -506,7 +505,7 @@ void Router::fetch_flit()
                     iu->stage = PIPELINE_RC;
                 }
 
-                mark_reschedule();
+                reschedule_next_tick = true;
             }
 
             queue_put(iu->buf, flit);
@@ -529,7 +528,7 @@ void Router::fetch_credit()
             // In any time, there should be at most 1 credit in the buffer.
             assert(queue_empty(ou->buf_credit));
             queue_put(ou->buf_credit, c);
-            mark_reschedule();
+            reschedule_next_tick = true;
         }
     }
 }
@@ -559,7 +558,7 @@ void Router::credit_update()
                     iu->next_global = STATE_ACTIVE;
                     ou->next_global = STATE_ACTIVE;
                 }
-                mark_reschedule();
+                reschedule_next_tick = true;
                 // dprintf(this, "credit update with kickstart! (iport=%d)\n",
                 //         ou->input_port);
             } else {
@@ -617,7 +616,7 @@ void Router::route_compute()
             // RC -> VA transition
             iu->next_global = STATE_VCWAIT;
             iu->stage = PIPELINE_VA;
-            mark_reschedule();
+            reschedule_next_tick = true;
         }
     }
 }
@@ -716,7 +715,7 @@ void Router::vc_alloc()
                 ou->input_port = iport;
 
                 iu->stage = PIPELINE_SA;
-                mark_reschedule();
+                reschedule_next_tick = true;
             }
         }
     }
@@ -790,7 +789,7 @@ void Router::switch_alloc()
                         iu->stage = PIPELINE_RC;
                         // dprintf(this, "SA: next state is Routing\n");
                     }
-                    mark_reschedule();
+                    reschedule_next_tick = true;
                 } else if (ou->credit_count == 0) {
                     dprintf(this, "SA: switching to CW\n");
                     iu->next_global = STATE_CREDWAIT;
@@ -800,7 +799,7 @@ void Router::switch_alloc()
                     iu->next_global = STATE_ACTIVE;
                     iu->stage = PIPELINE_SA;
                     // dprintf(this, "SA: next state is Active\n");
-                    mark_reschedule();
+                    reschedule_next_tick = true;
                 }
                 assert(ou->credit_count >= 0);
             }
@@ -845,7 +844,6 @@ void Router::switch_traverse()
 void Router::update_states()
 {
     bool changed = false;
-
     for (int port = 0; port < radix; port++) {
         InputUnit *iu = &input_units[port];
         OutputUnit *ou = &output_units[port];
@@ -860,10 +858,8 @@ void Router::update_states()
             changed = true;
         }
     }
-
     // Reschedule whenever there is one or more state change.
-    if (changed)
-        mark_reschedule();
+    if (changed) reschedule_next_tick = true;
 }
 
 void router_print_state(Router *r)
