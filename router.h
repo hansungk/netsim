@@ -146,13 +146,13 @@ enum GlobalState {
 
 char *globalstate_str(GlobalState state, char *s);
 
+// credit_count is omitted in the input unit; it can be found in the output unit
+// instead.
 struct InputUnit {
     GlobalState global;
     GlobalState next_global;
     int route_port;
     int output_vc;
-    // credit count is omitted; it can be found in the output
-    // units instead.
     PipelineStage stage;
     Flit **buf;
     Flit *st_ready;
@@ -169,12 +169,9 @@ struct OutputUnit {
 
 Event tick_event_from_id(Id id);
 
-/// A node. Despite its name, it can represent any of a router node, a source
-/// node and a destination node.
+/// A router. It can represent any of a switch node, a source node and a
+/// destination node.
 struct Router {
-    Router(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id, int radix,
-           Channel **in_chs, Channel **out_chs);
-
     void source_generate();
     void destination_consume();
     void fetch_flit();
@@ -186,22 +183,19 @@ struct Router {
     void switch_traverse();
     void update_states();
 
-    void do_reschedule();
-
-    Id id;                      // router ID
-    int radix;                  // radix
-    long flit_arrive_count = 0; // # of flits arrived for the destination node
-    long flit_gen_count = 0;    // # of flits generated for the destination node
-    EventQueue *eventq;         // reference to the simulator-global event queue
+    Id id;                  // router ID
+    int radix;              // radix
+    long flit_arrive_count; // # of flits arrived for the destination node
+    long flit_gen_count;    // # of flits generated for the destination node
+    EventQueue *eventq;     // reference to the simulator-global event queue
     Alloc *flit_allocator;
     Stat *stat;
     TopoDesc top_desc;
-    size_t input_buf_size = 1;
-    long last_tick = -1; // record the last tick time to prevent double-tick in
-                         // single cycle
-    long flit_payload_counter = 0; // for simple payload generation
-    bool reschedule_next_tick =
-        false; // marks whether to self-tick at the next cycle
+    size_t input_buf_size;
+    long last_tick; // record the last tick time to prevent double-tick in
+                    // single cycle. Initial value is -1.
+    long flit_payload_counter; // for simple payload generation
+    bool reschedule_next_tick; // marks whether to self-tick at the next cycle
     // Pointers to the input/output channels for each port.
     Channel **input_channels;
     Channel **output_channels;
@@ -214,15 +208,18 @@ struct Router {
     int sa_last_grant_input;
 };
 
+Router router_create(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id,
+                     int radix, Channel **in_chs, Channel **out_chs);
+
 // Tick a router.
 void router_tick(Router *r);
+void router_reschedule(Router *r);
 
 // Allocators and arbiters.
 int vc_arbit_round_robin(Router *r, int out_port);
 int sa_arbit_round_robin(Router *r, int out_port);
 
 void router_print_state(Router *r);
-
 void router_destroy(Router *r);
 
 #endif

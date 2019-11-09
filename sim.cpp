@@ -55,11 +55,12 @@ Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
         arrput(src_out_chs, src_out_ch);
         arrput(dst_in_chs, dst_in_ch);
 
-        Router src_node = Router(&eventq, flit_allocator, &stat, td, src_id(id),
-                                 1, src_in_chs, src_out_chs);
+        Router src_node = router_create(&eventq, flit_allocator, &stat, td,
+                                        src_id(id), 1, src_in_chs, src_out_chs);
+        Router dst_node = router_create(&eventq, flit_allocator, &stat, td,
+                                        dst_id(id), 1, dst_in_chs, dst_out_chs);
         arrput(src_nodes, src_node);
-        arrput(dst_nodes, Router(&eventq, flit_allocator, &stat, td, dst_id(id), 1,
-                                 dst_in_chs, dst_out_chs));
+        arrput(dst_nodes, dst_node);
 
         arrfree(src_in_chs);
         arrfree(src_out_chs);
@@ -91,8 +92,8 @@ Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
             arrput(in_chs, in_ch);
         }
 
-        arrput(routers, Router(&eventq, flit_allocator, &stat, td, rtr_id(id),
-                               radix, in_chs, out_chs));
+        arrput(routers, router_create(&eventq, flit_allocator, &stat, td,
+                                      rtr_id(id), radix, in_chs, out_chs));
 
         arrfree(in_chs);
         arrfree(out_chs);
