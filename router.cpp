@@ -889,4 +889,15 @@ void router_print_state(Router *r)
                globalstate_str(ou->global, s), ou->input_port,
                ou->credit_count);
     }
+
+    for (int i = 0; i < r->radix; i++) {
+        Channel *ch = r->output_channels[i];
+        printf("Channel[%d]: {", i);
+        for (long i = queue_fronti(ch->buf); i != queue_backi(ch->buf);
+             i = (i + 1) % queue_cap(ch->buf)) {
+            TimedFlit tf = ch->buf[i];
+            printf("%ld:%s,", tf.time, flit_str(tf.flit, s));
+        }
+        printf("}\n");
+    }
 }
