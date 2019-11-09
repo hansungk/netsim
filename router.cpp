@@ -666,7 +666,7 @@ int sa_arbit_round_robin(Router *r, int out_port)
         // upstream router.
         if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
             iu->global == STATE_ACTIVE && !queue_empty(iu->buf)) {
-            dprintf(r, "SA: granted oport %d to iport %d\n", out_port, iport);
+            // dprintf(r, "SA: granted oport %d to iport %d\n", out_port, iport);
             r->sa_last_grant_input = iport;
             return iport;
         } else if (iu->stage == PIPELINE_SA && iu->route_port == out_port &&
@@ -784,22 +784,22 @@ void Router::switch_alloc()
                     if (queue_empty(iu->buf)) {
                         iu->next_global = STATE_IDLE;
                         iu->stage = PIPELINE_IDLE;
-                        dprintf(this, "SA: next state is Idle\n");
+                        // dprintf(this, "SA: next state is Idle\n");
                     } else {
                         iu->next_global = STATE_ROUTING;
                         iu->stage = PIPELINE_RC;
-                        dprintf(this, "SA: next state is Routing\n");
+                        // dprintf(this, "SA: next state is Routing\n");
                     }
                     mark_reschedule();
                 } else if (ou->credit_count == 0) {
                     dprintf(this, "SA: switching to CW\n");
                     iu->next_global = STATE_CREDWAIT;
                     ou->next_global = STATE_CREDWAIT;
-                    dprintf(this, "SA: next state is CreditWait\n");
+                    // dprintf(this, "SA: next state is CreditWait\n");
                 } else {
                     iu->next_global = STATE_ACTIVE;
                     iu->stage = PIPELINE_SA;
-                    dprintf(this, "SA: next state is Active\n");
+                    // dprintf(this, "SA: next state is Active\n");
                     mark_reschedule();
                 }
                 assert(ou->credit_count >= 0);

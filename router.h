@@ -201,7 +201,7 @@ struct Router {
     Alloc *flit_allocator;
     Stat *stat;
     TopoDesc top_desc;
-    size_t input_buf_size = 8;
+    size_t input_buf_size = 1;
     long last_tick = -1; // record the last tick time to prevent double-tick in
                          // single cycle
     long flit_payload_counter = 0; // for simple payload generation

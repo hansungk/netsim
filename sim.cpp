@@ -116,7 +116,8 @@ int sim_debug_step(Sim *sim)
     char line[1024] = {0};
 
     printf("(@%ld) > ", sim->eventq.curr_time());
-    fgets(line, 100, stdin);
+    if (fgets(line, 100, stdin) == NULL)
+        return 0;
     char *nl = strchr(line, '\n');
     if (nl) *nl = '\0';
 
