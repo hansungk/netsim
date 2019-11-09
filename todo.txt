@@ -2,12 +2,19 @@
 
 * BUGS
 - A simple tornado traffic on a 1-D ring stalls simulation with
-  input_buf_size >= 8.
+  input_buf_size >= 8. --> DEADLOCK??
 
 * TODO
 - Infinite source queue and accurate terminal instrumentation
 - Topology for 2-D torus
 - Routing for 2-D torus
+- Wormhole -> VC flow control
+- Deadlock avoidance
+  - Dedicated/free VCs
+
+* Showcasing
+- Event-driven: show simulator does not progress further after
+  deadlock
 
 * Latency model
 - "ready" bit?
