@@ -1,7 +1,10 @@
 #ifndef EVENT_H
 #define EVENT_H
 
-#include <queue>
+#include "stdio.h"
+extern "C" {
+#include "pqueue.h"
+}
 
 #define IDSTRLEN 20
 
@@ -30,42 +33,29 @@ struct Router;
 
 void tick_func(Router *);
 
-class Event {
-public:
-    Event(Id i, void (*f_)(Router *)) : id(i), f(f_) {}
-
+struct Event {
     Id id;                           // target router ID
     void (*f)(Router *);
 };
 
-class EventQueue {
-public:
-    EventQueue() = default;
-    EventQueue(const EventQueue &) = delete;
-
-    void schedule(long time, const Event &e);
-    void reschedule(long reltime, const Event &e);
-
-    bool empty() const { return queue.empty(); }
-    size_t size() const { return queue.size(); }
-    const Event &peek() const;
-    Event pop();
-
-    long curr_time() const { return time_; }
-    // This is mainly used for the debugger, where it should be able to process
-    // all events at a specific time and stop right before the time changes.
-    long next_time() const;
-
-private:
-    using TimeEventPair = std::pair<long, Event>;
-    static constexpr auto cmp = [](const auto &p1, const auto &p2) {
-        return p1.first > p2.first;
-    };
-
-    long time_{-1};
-    std::priority_queue<TimeEventPair, std::vector<TimeEventPair>,
-                        decltype(cmp)>
-        queue{cmp};
+struct TimedEvent {
+    long time;
+    Event event;
+    size_t pos; // used for libpqueue
 };
+
+struct EventQueue {
+    long time_;
+    pqueue_t *pq;
+};
+
+void eventq_init(EventQueue *eq);
+void eventq_destroy(EventQueue *eq);
+Event eventq_pop(EventQueue *eq);
+int eventq_empty(const EventQueue *eq);
+void schedule(EventQueue *eq, long time, Event e);
+void reschedule(EventQueue *eq, long reltime, Event e);
+long curr_time(const EventQueue *eq);
+long next_time(const EventQueue *eq);
 
 #endif

@@ -7,7 +7,7 @@
 static void dprintf(Router *r, const char *fmt, ...)
 {
     char s[IDSTRLEN];
-    printf("[@%3ld] [%s] ", r->eventq->curr_time(), id_str(r->id, s));
+    printf("[@%3ld] [%s] ", curr_time(r->eventq), id_str(r->id, s));
     va_list args;
     va_start(args, fmt);
     vprintf(fmt, args);
@@ -34,23 +34,23 @@ void channel_destroy(Channel *ch)
 
 void Channel::put(Flit *flit)
 {
-    TimedFlit tf = {eventq->curr_time() + delay, flit};
+    TimedFlit tf = {curr_time(eventq) + delay, flit};
     queue_put(buf, tf);
-    eventq->reschedule(delay, tick_event_from_id(conn.dst.id));
+    reschedule(eventq, delay, tick_event_from_id(conn.dst.id));
 }
 
 void Channel::put_credit(const Credit &credit)
 {
-    TimedCredit tc = {eventq->curr_time() + delay, credit};
+    TimedCredit tc = {curr_time(eventq) + delay, credit};
     queue_put(buf_credit, tc);
-    eventq->reschedule(delay, tick_event_from_id(conn.src.id));
+    reschedule(eventq, delay, tick_event_from_id(conn.src.id));
 }
 
 Flit *Channel::get()
 {
     TimedFlit front = queue_front(buf);
-    if (!queue_empty(buf) && eventq->curr_time() >= front.time) {
-        assert(eventq->curr_time() == front.time && "stagnant flit!");
+    if (!queue_empty(buf) && curr_time(eventq) >= front.time) {
+        assert(curr_time(eventq) == front.time && "stagnant flit!");
         Flit *flit = front.flit;
         queue_pop(buf);
         return flit;
@@ -62,8 +62,8 @@ Flit *Channel::get()
 bool Channel::get_credit(Credit *c)
 {
     TimedCredit front = queue_front(buf_credit);
-    if (!queue_empty(buf_credit) && eventq->curr_time() >= front.time) {
-        assert(eventq->curr_time() == front.time && "stagnant flit!");
+    if (!queue_empty(buf_credit) && curr_time(eventq) >= front.time) {
+        assert(curr_time(eventq) == front.time && "stagnant flit!");
         queue_pop(buf_credit);
         *c = front.credit;
         return true;
@@ -363,7 +363,7 @@ void router_destroy(Router *r)
 void router_reschedule(Router *r)
 {
     if (r->reschedule_next_tick) {
-        r->eventq->reschedule(1, tick_event_from_id(r->id));
+        reschedule(r->eventq, 1, tick_event_from_id(r->id));
     }
 }
 
@@ -400,8 +400,8 @@ int *source_route_compute(TopoDesc td, int src_id, int dst_id)
 void router_tick(Router *r)
 {
     // Make sure this router has not been already ticked in this cycle.
-    if (r->eventq->curr_time() == r->last_tick) {
-        // dbg() << "WARN: double tick! curr_time=" << eventq->curr_time()
+    if (curr_time(r->eventq) == r->last_tick) {
+        // dbg() << "WARN: double tick! curr_time=" << curr_time(eventq)
         //       << ", last_tick=" << last_tick << std::endl;
         r->stat->double_tick_count++;
         return;
@@ -453,7 +453,7 @@ void router_tick(Router *r)
     // Do the rescheduling at here once to prevent flooding the event queue.
     router_reschedule(r);
 
-    r->last_tick = r->eventq->curr_time();
+    r->last_tick = curr_time(r->eventq);
 }
 
 ///

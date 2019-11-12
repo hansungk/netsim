@@ -8,6 +8,9 @@ Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
          Topology &top)
     : debug_mode(debug_mode), topology(top)
 {
+    // Initialize event system
+    eventq_init(&eventq);
+
     flit_allocator = alloc_create(sizeof(Flit));
 
     // Initialize channels
@@ -102,11 +105,11 @@ Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
 
 void sim_run_until(Sim *sim, long until)
 {
-    while (!sim->eventq.empty()) {
+    while (!eventq_empty(&sim->eventq)) {
         // Terminate simulation if the specified time is expired
-        if (0 <= until && until < sim->eventq.next_time())
+        if (0 <= until && until < next_time(&sim->eventq))
             break;
-        Event e = sim->eventq.pop();
+        Event e = eventq_pop(&sim->eventq);
         sim->process(e);
     }
 }
@@ -116,7 +119,7 @@ int sim_debug_step(Sim *sim)
 {
     char line[1024] = {0};
 
-    printf("(@%ld) > ", sim->eventq.curr_time());
+    printf("(@%ld) > ", curr_time(&sim->eventq));
     if (fgets(line, 100, stdin) == NULL)
         return 0;
     char *nl = strchr(line, '\n');
@@ -127,7 +130,7 @@ int sim_debug_step(Sim *sim)
     } else if (strlen(line) == 0) {
         return 1;
     } else if (!strcmp(line, "n")) {
-        long until = sim->eventq.curr_time();
+        long until = curr_time(&sim->eventq);
         sim_run_until(sim, until + 1);
         return 1;
     } else if (!strcmp(line, "p")) {
@@ -175,7 +178,7 @@ void Sim::report() const {
     printf("\n");
     printf("==== SIMULATION RESULT ====\n");
 
-    printf("# of ticks: %ld\n", eventq.curr_time());
+    printf("# of ticks: %ld\n", curr_time(&eventq));
     printf("# of double ticks: %ld\n", stat.double_tick_count);
     printf("\n");
 
@@ -222,4 +225,6 @@ void sim_destroy(Sim *sim)
     arrfree(sim->routers);
     arrfree(sim->src_nodes);
     arrfree(sim->dst_nodes);
+
+    eventq_destroy(&sim->eventq);
 }
