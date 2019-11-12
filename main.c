@@ -11,15 +11,15 @@ int main(int argc, char **argv) {
 
     Topology top = topology_ring(4);
 
-    Sim sim{debug, 4, 4, 3, top};
+    Sim sim = sim_create(debug, 4, 4, 3, top);
     schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
     schedule(&sim.eventq, 0, tick_event_from_id(src_id(1)));
     schedule(&sim.eventq, 0, tick_event_from_id(src_id(2)));
     // sim.eventq.schedule(0, tick_event_from_id(src_id(3)));
 
-    sim.run(10000);
+    sim_run(&sim, 10000);
 
-    sim.report();
+    sim_report(&sim);
 
     sim_destroy(&sim);
     topology_destroy(&top);

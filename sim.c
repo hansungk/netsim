@@ -4,36 +4,41 @@
 
 void print_conn(const char *name, Connection conn);
 
-Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
-         Topology &top)
-    : debug_mode(debug_mode), topology(top)
+Sim sim_create(int debug_mode, int terminal_count, int router_count, int radix,
+               Topology top)
 {
-    // Initialize event system
-    eventq_init(&eventq);
+    Sim sim;
+    memset(&sim, 0, sizeof(Sim));
+    sim.flit_allocator = alloc_create(sizeof(Flit));
+    sim.debug_mode = debug_mode;
+    sim.topology = top;
+    sim.channel_delay = 1; /* FIXME hardcoded */
 
-    flit_allocator = alloc_create(sizeof(Flit));
+    // Initialize event system
+    eventq_init(&sim.eventq);
 
     // Initialize channels
-    channels = NULL;
+    sim.channels = NULL;
     for (ptrdiff_t i = 0; i < hmlen(top.forward_hash); i++) {
         Connection conn = top.forward_hash[i].value;
         // printf("Found connection: %d.%d.%d -> %d.%d.%d\n", conn.src.id.type, conn.src.id.value,
         //        conn.src.port, conn.dst.id.type, conn.dst.id.value, conn.dst.port);
-        Channel ch{&eventq, channel_delay, conn};
-        arrput(channels, ch);
-        // channels.emplace_back(&eventq, channel_delay, conn);
+        Channel ch = channel_create(&sim.eventq, sim.channel_delay, conn);
+        arrput(sim.channels, ch);
+        // channels.emplace_back(&eventq, sim.channel_delay, conn);
     }
-    channel_map = NULL;
-    for (long i = 0; i < arrlen(channels); i++) {
-        Channel *ch = &channels[i];
-        hmput(channel_map, ch->conn.uniq, ch);
+    sim.channel_map = NULL;
+    for (long i = 0; i < arrlen(sim.channels); i++) {
+        Channel *ch = &sim.channels[i];
+        hmput(sim.channel_map, ch->conn.uniq, ch);
     }
 
-    TopoDesc td{TOP_TORUS, 4, 1};
+    // FIXME This is not stored in Sim.
+    TopoDesc td = {TOP_TORUS, 4, 1};
 
     // Initialize terminal nodes
-    src_nodes = NULL;
-    dst_nodes = NULL;
+    sim.src_nodes = NULL;
+    sim.dst_nodes = NULL;
     for (int id = 0; id < terminal_count; id++) {
         // Terminal nodes only have a single port.  Also, destination nodes
         // doesn't have output ports!
@@ -48,22 +53,22 @@ Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
         Connection dst_conn = conn_find_reverse(&top, dst_rpp);
         assert(src_conn.src.port != -1);
         assert(dst_conn.src.port != -1);
-        long src_idx = hmgeti(channel_map, src_conn.uniq);
-        long dst_idx = hmgeti(channel_map, dst_conn.uniq);
+        long src_idx = hmgeti(sim.channel_map, src_conn.uniq);
+        long dst_idx = hmgeti(sim.channel_map, dst_conn.uniq);
         assert(src_idx >= 0);
         assert(dst_idx >= 0);
-        Channel *src_out_ch = channel_map[src_idx].value;
-        Channel *dst_in_ch = channel_map[dst_idx].value;
+        Channel *src_out_ch = sim.channel_map[src_idx].value;
+        Channel *dst_in_ch = sim.channel_map[dst_idx].value;
 
         arrput(src_out_chs, src_out_ch);
         arrput(dst_in_chs, dst_in_ch);
 
-        Router src_node = router_create(&eventq, flit_allocator, &stat, td,
+        Router src_node = router_create(&sim.eventq, sim.flit_allocator, &sim.stat, td,
                                         src_id(id), 1, src_in_chs, src_out_chs);
-        Router dst_node = router_create(&eventq, flit_allocator, &stat, td,
+        Router dst_node = router_create(&sim.eventq, sim.flit_allocator, &sim.stat, td,
                                         dst_id(id), 1, dst_in_chs, dst_out_chs);
-        arrput(src_nodes, src_node);
-        arrput(dst_nodes, dst_node);
+        arrput(sim.src_nodes, src_node);
+        arrput(sim.dst_nodes, dst_node);
 
         arrfree(src_in_chs);
         arrfree(src_out_chs);
@@ -72,7 +77,7 @@ Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
     }
 
     // Initialize router nodes
-    routers = NULL;
+    sim.routers = NULL;
 
     for (int id = 0; id < router_count; id++) {
         Channel **in_chs = NULL;
@@ -84,23 +89,25 @@ Sim::Sim(int debug_mode, int terminal_count, int router_count, int radix,
             Connection input_conn = conn_find_reverse(&top, rpp);
             assert(output_conn.src.port != -1);
             assert(input_conn.src.port != -1);
-            long out_idx = hmgeti(channel_map, output_conn.uniq);
-            long in_idx = hmgeti(channel_map, input_conn.uniq);
+            long out_idx = hmgeti(sim.channel_map, output_conn.uniq);
+            long in_idx = hmgeti(sim.channel_map, input_conn.uniq);
             assert(out_idx >= 0);
             assert(in_idx >= 0);
-            Channel *out_ch = channel_map[out_idx].value;
-            Channel *in_ch = channel_map[in_idx].value;
+            Channel *out_ch = sim.channel_map[out_idx].value;
+            Channel *in_ch = sim.channel_map[in_idx].value;
 
             arrput(out_chs, out_ch);
             arrput(in_chs, in_ch);
         }
 
-        arrput(routers, router_create(&eventq, flit_allocator, &stat, td,
+        arrput(sim.routers, router_create(&sim.eventq, sim.flit_allocator, &sim.stat, td,
                                       rtr_id(id), radix, in_chs, out_chs));
 
         arrfree(in_chs);
         arrfree(out_chs);
     }
+
+    return sim;
 }
 
 void sim_run_until(Sim *sim, long until)
@@ -110,7 +117,7 @@ void sim_run_until(Sim *sim, long until)
         if (0 <= until && until < next_time(&sim->eventq))
             break;
         Event e = eventq_pop(&sim->eventq);
-        sim->process(e);
+        sim_process(sim, e);
     }
 }
 
@@ -163,48 +170,50 @@ int sim_debug_step(Sim *sim)
     return 1;
 }
 
-void Sim::run(long until)
+// Run the simulator.
+void sim_run(Sim *sim, long until)
 {
-    if (debug_mode) {
-        while (sim_debug_step(this));
+    if (sim->debug_mode) {
+        while (sim_debug_step(sim));
     } else {
-        sim_run_until(this, until);
+        sim_run_until(sim, until);
     }
 }
 
-void Sim::report() const {
+void sim_report(Sim *sim) {
     char s[IDSTRLEN];
 
     printf("\n");
     printf("==== SIMULATION RESULT ====\n");
 
-    printf("# of ticks: %ld\n", curr_time(&eventq));
-    printf("# of double ticks: %ld\n", stat.double_tick_count);
+    printf("# of ticks: %ld\n", curr_time(&sim->eventq));
+    printf("# of double ticks: %ld\n", sim->stat.double_tick_count);
     printf("\n");
 
-    for (long i = 0; i < arrlen(src_nodes); i++) {
-        Router *src = &src_nodes[i];
+    for (long i = 0; i < arrlen(sim->src_nodes); i++) {
+        Router *src = &sim->src_nodes[i];
         printf("[%s] ", id_str(src->id, s));
         printf("# of flits generated: %ld\n", src->flit_gen_count);
     }
 
-    for (long i = 0; i < arrlen(dst_nodes); i++) {
-        Router *dst = &dst_nodes[i];
+    for (long i = 0; i < arrlen(sim->dst_nodes); i++) {
+        Router *dst = &sim->dst_nodes[i];
         printf("[%s] ", id_str(dst->id, s));
         printf("# of flits arrived: %ld\n", dst->flit_arrive_count);
     }
 }
 
-void Sim::process(const Event &e)
+// Process an event.
+void sim_process(Sim *sim, Event e)
 {
     if (is_src(e.id)) {
-        e.f(&src_nodes[e.id.value]);
+        e.f(&sim->src_nodes[e.id.value]);
     } else if (is_dst(e.id)) {
-        e.f(&dst_nodes[e.id.value]);
+        e.f(&sim->dst_nodes[e.id.value]);
     } else if (is_rtr(e.id)) {
-        e.f(&routers[e.id.value]);
+        e.f(&sim->routers[e.id.value]);
     } else {
-        assert(false);
+        assert(0);
     }
 }
 

@@ -29,11 +29,11 @@ template <class T> static T *queue_init_wrapper(T *a, size_t elemsize, size_t le
 
 #define queue_header(t) ((Queue *)(t) - 1)
 
-struct Queue {
+typedef struct Queue {
   size_t cap;
   long front;
   long back;
-};
+} Queue;
 
 void queue_free(void *a);
 long queue_len(const void *a);

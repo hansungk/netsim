@@ -2,9 +2,7 @@
 #define EVENT_H
 
 #include "stdio.h"
-extern "C" {
 #include "pqueue.h"
-}
 
 #define IDSTRLEN 20
 
@@ -14,14 +12,14 @@ enum IdType {
     ID_RTR,
 };
 
-struct Id {
-    IdType type;
+typedef struct Id {
+    enum IdType type;
     int value;
-};
+} Id;
 
-inline bool is_src(Id id) { return id.type == ID_SRC; };
-inline bool is_dst(Id id) { return id.type == ID_DST; };
-inline bool is_rtr(Id id) { return id.type == ID_RTR; };
+static inline int is_src(Id id) { return id.type == ID_SRC; };
+static inline int is_dst(Id id) { return id.type == ID_DST; };
+static inline int is_rtr(Id id) { return id.type == ID_RTR; };
 
 static inline Id src_id(int id) { return (Id){.type = ID_SRC, .value = id}; }
 static inline Id dst_id(int id) { return (Id){.type = ID_DST, .value = id}; }
@@ -29,25 +27,26 @@ static inline Id rtr_id(int id) { return (Id){.type = ID_RTR, .value = id}; }
 
 char *id_str(Id id, char *s);
 
-struct Router;
+typedef struct Router Router;
 
 void tick_func(Router *);
 
-struct Event {
-    Id id;                           // target router ID
+// This type is intended to be used by value.
+typedef struct Event {
+    Id id; // target router ID
     void (*f)(Router *);
-};
+} Event;
 
-struct TimedEvent {
+typedef struct TimedEvent {
     long time;
     Event event;
     size_t pos; // used for libpqueue
-};
+} TimedEvent;
 
-struct EventQueue {
+typedef struct EventQueue {
     long time_;
     pqueue_t *pq;
-};
+} EventQueue;
 
 void eventq_init(EventQueue *eq);
 void eventq_destroy(EventQueue *eq);

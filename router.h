@@ -5,29 +5,29 @@
 #include "mem.h"
 #include "stb_ds.h"
 
-struct Stat {
-    long double_tick_count = 0;
-};
+typedef struct Stat {
+    long double_tick_count;
+} Stat;
 
-struct RouterPortPair {
+typedef struct RouterPortPair {
     Id id;
     int port;
-};
+} RouterPortPair;
 
-struct Connection {
+typedef struct Connection {
     RouterPortPair src;
     RouterPortPair dst;
     int uniq; // used as hash key
-};
+} Connection;
 
 void print_conn(const char *name, Connection conn);
 
 // Maps a RouterPortPair to a Connection.  Used for finding a connection with
 // either end of it as the key.
-struct ConnectionHash {
+typedef struct ConnectionHash {
     RouterPortPair key;
     Connection value;
-};
+} ConnectionHash;
 
 static const Connection not_connected = (Connection){
     .src =
@@ -44,10 +44,10 @@ static const Connection not_connected = (Connection){
 
 // Encodes channel connectivity in a bidirectional map.
 // Supports runtime checking for connectivity error.
-struct Topology {
+typedef struct Topology {
     ConnectionHash *forward_hash;
     ConnectionHash *reverse_hash;
-};
+} Topology;
 
 Topology topology_ring(int n);
 void topology_destroy(Topology *top);
@@ -60,11 +60,11 @@ enum TopoType {
     TOP_FCLOS,
 };
 
-struct TopoDesc {
-    TopoType type;
+typedef struct TopoDesc {
+    enum TopoType type;
     int k; // ring length of torus
     int r; // dimension of torus
-};
+} TopoDesc;
 
 /// Source-side all-in-one route computation.
 int *source_route_compute(TopoDesc td, int src_id, int dst_id);
@@ -75,53 +75,51 @@ enum FlitType {
     FLIT_TAIL,
 };
 
-struct RouteInfo {
+typedef struct RouteInfo {
     int src;   // source node ID
     int dst;   // destination node ID
     int *path; // series of output ports for this route
     size_t idx;
-};
+} RouteInfo;
 
 /// Flit and credit encoding.
 /// Follows Fig. 16.13.
-struct Flit {
-    FlitType type;
+typedef struct Flit {
+    enum FlitType type;
     RouteInfo route_info;
     long payload;
-};
+} Flit;
 
-Flit *flit_create(FlitType t, int src, int dst, long p);
+Flit *flit_create(enum FlitType t, int src, int dst, long p);
 char *flit_str(const Flit *flit, char *s);
 
-struct Credit {
+typedef struct Credit {
     // VC is omitted, as we only have one VC per a physical channel.
-};
+} Credit;
 
-struct TimedFlit {
+typedef struct TimedFlit {
     long time;
     Flit *flit;
-};
+} TimedFlit;
 
-struct TimedCredit {
+typedef struct TimedCredit {
     long time;
     Credit credit;
-};
+} TimedCredit;
 
-struct Channel {
-    Channel(EventQueue *eq, long dl, const Connection conn);
-
-    void put(Flit *flit);
-    void put_credit(const Credit &credit);
-    Flit *get();
-    bool get_credit(Credit *c);
-
+typedef struct Channel {
     Connection conn;
     EventQueue *eventq;
     long delay;
-    TimedFlit *buf = NULL;
-    TimedCredit *buf_credit = NULL;
-};
+    TimedFlit *buf;
+    TimedCredit *buf_credit;
+} Channel;
 
+Channel channel_create(EventQueue *eq, long dl, const Connection conn);
+void channel_put(Channel *ch, Flit *flit);
+void channel_put_credit(Channel *ch, Credit credit);
+Flit *channel_get(Channel *ch);
+int channel_get_credit(Channel *ch, Credit *c);
 void channel_destroy(Channel *ch);
 
 // Pipeline stages.
@@ -142,34 +140,34 @@ enum GlobalState {
     STATE_CREDWAIT,
 };
 
-char *globalstate_str(GlobalState state, char *s);
+char *globalstate_str(enum GlobalState state, char *s);
 
 // credit_count is omitted in the input unit; it can be found in the output unit
 // instead.
-struct InputUnit {
-    GlobalState global;
-    GlobalState next_global;
+typedef struct InputUnit {
+    enum GlobalState global;
+    enum GlobalState next_global;
     int route_port;
     int output_vc;
-    PipelineStage stage;
+    enum PipelineStage stage;
     Flit **buf;
     Flit *st_ready;
-};
+} InputUnit;
 
-struct OutputUnit {
-    GlobalState global;
-    GlobalState next_global;
+typedef struct OutputUnit {
+    enum GlobalState global;
+    enum GlobalState next_global;
     int input_port;
     int input_vc;
     int credit_count;
     Credit *buf_credit;
-};
+} OutputUnit;
 
 Event tick_event_from_id(Id id);
 
 /// A router. It can represent any of a switch node, a source node and a
 /// destination node.
-struct Router {
+typedef struct Router {
     Id id;                  // router ID
     int radix;              // radix
     long flit_arrive_count; // # of flits arrived for the destination node
@@ -180,7 +178,7 @@ struct Router {
     TopoDesc top_desc;
     long last_tick; // prevents double-tick in single cycle (initially -1)
     long flit_payload_counter; // for simple payload generation
-    bool reschedule_next_tick; // marks whether to self-tick at the next cycle
+    int reschedule_next_tick; // marks whether to self-tick at the next cycle
     Channel **input_channels;  // accessor to the input channels
     Channel **output_channels; // accessor to the output channels
     InputUnit *input_units;    // input units
@@ -188,7 +186,7 @@ struct Router {
     size_t input_buf_size;     // max size of each input flit queue
     int va_last_grant_input;   // for round-robin arbitration
     int sa_last_grant_input;   // for round-robin arbitration
-};
+} Router;
 
 Router router_create(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id,
                      int radix, Channel **in_chs, Channel **out_chs);

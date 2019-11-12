@@ -7,37 +7,30 @@
 
 void fatal(const char *fmt, ...);
 
-struct ChannelMap {
+typedef struct ChannelMap {
     int key;
     Channel *value;
-};
+} ChannelMap;
 
-struct Sim {
-    Sim(int debug_mode, int terminal_count, int router_count, int radix,
-        Topology &top);
-
-    // Run the simulator.
-    void run(long until);
-    // Process an event.
-    void process(const Event &e);
-    void report() const;
-
-    void handler();
-
-    EventQueue eventq{}; // global event queue
+typedef struct Sim {
+    EventQueue eventq; // global event queue
     Alloc *flit_allocator;
     Stat stat;
     int debug_mode;
     Topology topology;
-    long channel_delay{1};
-    // std::map<Connection, Channel &> channel_map{};
+    long channel_delay;
     ChannelMap *channel_map;
     Channel *channels;
     Router *routers;
     Router *src_nodes;
     Router *dst_nodes;
-};
+} Sim;
 
+Sim sim_create(int debug_mode, int terminal_count, int router_count, int radix,
+               Topology top);
+void sim_run(Sim *sim, long until);
+void sim_process(Sim *sim, Event e);
+void sim_report(Sim *sim);
 void sim_destroy(Sim *sim);
 
 #endif
