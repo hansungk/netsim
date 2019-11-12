@@ -232,7 +232,7 @@ pqueue_dump(pqueue_t *q,
     int i;
 
     fprintf(stdout,"posn\tleft\tright\tparent\tmaxchild\t...\n");
-    for (i = 1; i < q->size ;i++) {
+    for (i = 1; (size_t)i < q->size ;i++) {
         fprintf(stdout,
                 "%d\t%d\t%d\t%d\t%ul\t",
                 i,
@@ -284,14 +284,14 @@ pqueue_print(pqueue_t *q,
 static int
 subtree_is_valid(pqueue_t *q, int pos)
 {
-    if (left(pos) < q->size) {
+    if ((size_t)left(pos) < q->size) {
         /* has a left child */
         if (q->cmppri(q->getpri(q->d[pos]), q->getpri(q->d[left(pos)])))
             return 0;
         if (!subtree_is_valid(q, left(pos)))
             return 0;
     }
-    if (right(pos) < q->size) {
+    if ((size_t)right(pos) < q->size) {
         /* has a right child */
         if (q->cmppri(q->getpri(q->d[pos]), q->getpri(q->d[right(pos)])))
             return 0;
