@@ -4,7 +4,7 @@ project (netsim LANGUAGES C)
 
 add_executable (netsim main.c sim.c router.c event.c queue.c
     mem.c pqueue.c)
-# target_compile_features(netsim PUBLIC cxx_std_17)
+# target_compile_features(netsim PUBLIC c_std_99)
 
 target_compile_options(netsim PRIVATE -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer
     -fsanitize=address,leak,undefined -fcolor-diagnostics)
