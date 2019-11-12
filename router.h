@@ -17,7 +17,7 @@ struct RouterPortPair {
 struct Connection {
     RouterPortPair src;
     RouterPortPair dst;
-    int uniq; // Used as hash key.
+    int uniq; // used as hash key
 };
 
 void print_conn(const char *name, Connection conn);
@@ -42,8 +42,6 @@ static const Connection not_connected = (Connection){
         },
 };
 
-long id_hash(Id id);
-
 // Encodes channel connectivity in a bidirectional map.
 // Supports runtime checking for connectivity error.
 struct Topology {
@@ -64,8 +62,8 @@ enum TopoType {
 
 struct TopoDesc {
     TopoType type;
-    int k; // side length for tori
-    int r; // dimension for tori
+    int k; // ring length of torus
+    int r; // dimension of torus
 };
 
 /// Source-side all-in-one route computation.
@@ -172,17 +170,6 @@ Event tick_event_from_id(Id id);
 /// A router. It can represent any of a switch node, a source node and a
 /// destination node.
 struct Router {
-    void source_generate();
-    void destination_consume();
-    void fetch_flit();
-    void fetch_credit();
-    void credit_update();
-    void route_compute();
-    void vc_alloc();
-    void switch_alloc();
-    void switch_traverse();
-    void update_states();
-
     Id id;                  // router ID
     int radix;              // radix
     long flit_arrive_count; // # of flits arrived for the destination node
@@ -191,29 +178,36 @@ struct Router {
     Alloc *flit_allocator;
     Stat *stat;
     TopoDesc top_desc;
-    size_t input_buf_size;
-    long last_tick; // record the last tick time to prevent double-tick in
-                    // single cycle. Initial value is -1.
+    long last_tick; // prevents double-tick in single cycle (initially -1)
     long flit_payload_counter; // for simple payload generation
     bool reschedule_next_tick; // marks whether to self-tick at the next cycle
-    // Pointers to the input/output channels for each port.
-    Channel **input_channels;
-    Channel **output_channels;
-    // Array of input/output units. Their lengths are the same as the radix of
-    // this router.
-    InputUnit *input_units;
-    OutputUnit *output_units;
-    // Allocator variables.
-    int va_last_grant_input;
-    int sa_last_grant_input;
+    Channel **input_channels;  // accessor to the input channels
+    Channel **output_channels; // accessor to the output channels
+    InputUnit *input_units;    // input units
+    OutputUnit *output_units;  // output units
+    size_t input_buf_size;     // max size of each input flit queue
+    int va_last_grant_input;   // for round-robin arbitration
+    int sa_last_grant_input;   // for round-robin arbitration
 };
 
 Router router_create(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id,
                      int radix, Channel **in_chs, Channel **out_chs);
 
-// Tick a router.
+// Events and scheduling.
 void router_tick(Router *r);
 void router_reschedule(Router *r);
+
+// Pipeline stages.
+void source_generate(Router *r);
+void destination_consume(Router *r);
+void fetch_flit(Router *r);
+void fetch_credit(Router *r);
+void credit_update(Router *r);
+void route_compute(Router *r);
+void vc_alloc(Router *r);
+void switch_alloc(Router *r);
+void switch_traverse(Router *r);
+void update_states(Router *r);
 
 // Allocators and arbiters.
 int vc_arbit_round_robin(Router *r, int out_port);
