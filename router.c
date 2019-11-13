@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <assert.h>
 
+// Maximum supported torus dimension.
+#define NORMALLEN 10
+
 void debugf(Router *r, const char *fmt, ...)
 {
     char s[IDSTRLEN];
@@ -54,7 +57,7 @@ Flit *channel_get(Channel *ch)
 {
     TimedFlit front = queue_front(ch->buf);
     if (!queue_empty(ch->buf) && curr_time(ch->eventq) >= front.time) {
-        assert(curr_time(ch->eventq) == front.time && "stagnant flit!");
+        assert(curr_time(ch->eventq) == front.time && "stale flit!");
         Flit *flit = front.flit;
         queue_pop(ch->buf);
         return flit;
@@ -67,7 +70,7 @@ int channel_get_credit(Channel *ch, Credit *c)
 {
     TimedCredit front = queue_front(ch->buf_credit);
     if (!queue_empty(ch->buf_credit) && curr_time(ch->eventq) >= front.time) {
-        assert(curr_time(ch->eventq) == front.time && "stagnant flit!");
+        assert(curr_time(ch->eventq) == front.time && "stale flit!");
         queue_pop(ch->buf_credit);
         *c = front.credit;
         return 1;
@@ -99,10 +102,24 @@ void topology_destroy(Topology *top)
 
 int topology_connect(Topology *t, RouterPortPair input, RouterPortPair output)
 {
-    if (hmgeti(t->forward_hash, input) >= 0 ||
-        hmgeti(t->reverse_hash, output) >= 0)
-        // Bad connectivity: source or destination port is already connected
-        return 0;
+    int old_output_i = hmgeti(t->forward_hash, input);
+    int old_input_i = hmgeti(t->reverse_hash, output);
+    if (old_output_i >= 0 || old_input_i >= 0) {
+        RouterPortPair old_output = t->forward_hash[old_output_i].value.dst;
+        RouterPortPair old_input = t->reverse_hash[old_input_i].value.src;
+        if (input.id.type == old_input.id.type &&
+            input.id.value == old_input.id.value &&
+            input.port == old_input.port &&
+            output.id.type == old_output.id.type &&
+            output.id.value == old_output.id.value &&
+            output.port == old_output.port) {
+            // Already connected.
+            return 1;
+        } else {
+            // Bad connectivity: source or destination port is already connected
+            return 0;
+        }
+    }
     int uniq = hmlen(t->forward_hash);
     Connection conn = (Connection){.src = input, .dst = output, .uniq = uniq};
     hmput(t->forward_hash, input, conn);
@@ -129,14 +146,21 @@ int topology_connect_terminals(Topology *t, const int *ids)
 }
 
 // Port usage: 0:terminal, 1:counter-clockwise, 2:clockwise
-int topology_connect_ring(Topology *t, const int *ids)
+int topology_connect_ring(Topology *t, const int *ids, int direction)
 {
+    printf("Connecting ring: {");
+    for (long i = 0; i < arrlen(ids); i++)
+        printf("%d,", ids[i]);
+    printf("}\n");
+
+    int port_cw = direction * 2 + 2;
+    int port_ccw = direction * 2 + 1;
     int res = 1;
     for (long i = 0; i < arrlen(ids); i++) {
         int l = ids[i];
         int r = ids[(i + 1) % arrlen(ids)];
-        RouterPortPair lport = {rtr_id(l), 2};
-        RouterPortPair rport = {rtr_id(r), 1};
+        RouterPortPair lport = {rtr_id(l), port_cw};
+        RouterPortPair rport = {rtr_id(r), port_ccw};
 
         // Bidirectional channel
         res &= topology_connect(t, lport, rport);
@@ -157,7 +181,7 @@ Topology topology_ring(int n)
         arrput(ids, id);
 
     // Inter-router channels
-    res &= topology_connect_ring(&top, ids);
+    res &= topology_connect_ring(&top, ids, 0);
     // Terminal node channels
     res &= topology_connect_terminals(&top, ids);
     assert(res);
@@ -166,39 +190,59 @@ Topology topology_ring(int n)
     return top;
 }
 
-void topology_connect_torus_dimension(Topology *t, int k, int r, int offset)
+// Connects part of the torus that corresponds to the the given parameters.
+// Calls itself recursively to form the desired connection.
+//
+// dimension: size of the 'normal' array.
+// offset: offset of the lowest index.
+int topology_connect_torus_dimension(Topology *t, int k, int r, int dimension, int *normal, int offset)
 {
+    printf("Normal=[%d,%d,%d]\n", normal[0], normal[1], normal[2]);
+
+    int res = 1;
+    int zeros = 0;
+    for (int i = 0; i < dimension; i++)
+        if (normal[i] == 0)
+            zeros++;
+
+    if (zeros == 1) {
+        // Ring
+        int stride = 1;
+        for (int i = 0; i < dimension; i++, stride *= k) {
+            if (normal[i] == 0) {
+                int *ids = NULL;
+                for (int j = 0; j < k; j++)
+                    arrput(ids, offset + j * stride);
+                res &= topology_connect_ring(t, ids, i);
+                arrfree(ids);
+                break; // only one 0 in normal
+            }
+        }
+    } else {
+        int stride = 1;
+        for (int i = 0; i < dimension; i++, stride *= k) {
+            if (normal[i] == 0) {
+                int subnormal[NORMALLEN];
+                memcpy(subnormal, normal, dimension * sizeof(int));
+                subnormal[i] = 1; // lock this dimension
+                for (int j = 0; j < k; j++) {
+                    int suboffset = offset + j * stride;
+                    res &= topology_connect_torus_dimension(
+                        t, k, r, dimension, subnormal, suboffset);
+                }
+            }
+        }
+    }
+
+    return res;
 }
 
 Topology topology_torus(int k, int r)
 {
+    int normal[NORMALLEN] = {0};
     Topology top = topology_create();
-    // int *ids = NULL;
-    int res = 1;
-
-    // Horizontal
-    int stride = k;
-    for (int i = 0; i < r; i++) {
-        int *ids = NULL;
-        for (int j = 0; j < k; j++) {
-            arrput(ids, k * i + j);
-        }
-        res &= topology_connect_ring(&top, ids);
-        arrfree(ids);
-
-        stride *= k;
-    }
-    // Vertical
-
-    for (int i = 0; i < r; i++) {
-        int *ids = NULL;
-        for (int j = 0; j < k; j++) {
-            arrput(ids, k * j + i);
-        }
-        res &= topology_connect_ring(&top, ids);
-        arrfree(ids);
-    }
-
+    int res = topology_connect_torus_dimension(&top, k, r, r, normal, 0);
+    assert(res);
     return top;
 }
 
@@ -494,7 +538,7 @@ void source_generate(Router *r)
     channel_put(och, flit);
 
     debugf(r, "Credit decrement, credit=%d->%d\n", ou->credit_count,
-            ou->credit_count - 1);
+           ou->credit_count - 1);
     ou->credit_count--;
     assert(ou->credit_count >= 0);
 
@@ -527,7 +571,7 @@ void destination_consume(Router *r)
 
         RouterPortPair src_pair = ich->conn.src;
         debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
-                src_pair.port);
+               src_pair.port);
 
         // Self-tick autonomously unless all input ports are empty.
         r->reschedule_next_tick = 1;
@@ -543,8 +587,8 @@ void fetch_flit(Router *r)
         if (!flit) continue;
 
         char s[IDSTRLEN];
-        debugf(r, "Fetched flit %s, buf[%d].size()=%zd\n",
-                flit_str(flit, s), iport, queue_len(iu->buf));
+        debugf(r, "Fetched flit %s, buf[%d].size()=%zd\n", flit_str(flit, s),
+               iport, queue_len(iu->buf));
 
         // If the buffer was empty, this is the only place to kickstart the
         // pipeline.
@@ -591,7 +635,7 @@ void credit_update(Router *r)
         OutputUnit *ou = &r->output_units[oport];
         if (!queue_empty(ou->buf_credit)) {
             debugf(r, "Credit update! credit=%d->%d (oport=%d)\n",
-                    ou->credit_count, ou->credit_count + 1, oport);
+                   ou->credit_count, ou->credit_count + 1, oport);
             // Upon credit update, the input and output unit receiving this
             // credit may or may not be in the CreditWait state.  If they are,
             // make sure to switch them back to the active state so that they
@@ -658,11 +702,10 @@ void route_compute(Router *r)
             // }
 
             assert(flit->route_info.idx < arrlenu(flit->route_info.path));
-            debugf(r, "RC: path size = %zd\n",
-                    arrlen(flit->route_info.path));
+            debugf(r, "RC: path size = %zd\n", arrlen(flit->route_info.path));
             iu->route_port = flit->route_info.path[flit->route_info.idx];
             debugf(r, "RC success for %s (idx=%zu, oport=%d)\n",
-                    flit_str(flit, s), flit->route_info.idx, iu->route_port);
+                   flit_str(flit, s), flit->route_info.idx, iu->route_port);
             flit->route_info.idx++;
 
             // RC -> VA transition
@@ -750,7 +793,7 @@ void vc_alloc(Router *r)
 
                 char s[IDSTRLEN];
                 debugf(r, "VA: success for %s from iport %d to oport %d\n",
-                        flit_str(queue_front(iu->buf), s), iport, oport);
+                       flit_str(queue_front(iu->buf), s), iport, oport);
 
                 // We now have the VC, but we cannot proceed to the SA stage if
                 // there is no credit.
@@ -796,7 +839,7 @@ void switch_alloc(Router *r)
 
                 char s[IDSTRLEN];
                 debugf(r, "SA success for %s from iport %d to oport %d\n",
-                        flit_str(queue_front(iu->buf), s), iport, oport);
+                       flit_str(queue_front(iu->buf), s), iport, oport);
 
                 // The flit leaves the buffer here.
                 Flit *flit = queue_front(iu->buf);
@@ -806,7 +849,7 @@ void switch_alloc(Router *r)
 
                 // Credit decrement.
                 debugf(r, "Credit decrement, credit=%d->%d (oport=%d)\n",
-                        ou->credit_count, ou->credit_count - 1, oport);
+                       ou->credit_count, ou->credit_count - 1, oport);
                 assert(ou->credit_count > 0);
                 ou->credit_count--;
 
@@ -866,7 +909,7 @@ void switch_traverse(Router *r)
 
             char s[IDSTRLEN], s2[IDSTRLEN];
             debugf(r, "Switch traverse: %s sent to {%s, %d}\n",
-                    flit_str(flit, s), id_str(dst_pair.id, s2), dst_pair.port);
+                   flit_str(flit, s), id_str(dst_pair.id, s2), dst_pair.port);
 
             // With output speedup:
             // auto &ou = output_units[iu->route_port];
@@ -877,7 +920,7 @@ void switch_traverse(Router *r)
             channel_put_credit(ich, (Credit){});
             RouterPortPair src_pair = ich->conn.src;
             debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
-                    src_pair.port);
+                   src_pair.port);
         }
     }
 }

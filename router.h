@@ -50,6 +50,7 @@ typedef struct Topology {
 } Topology;
 
 Topology topology_ring(int n);
+Topology topology_torus(int k, int r);
 void topology_destroy(Topology *top);
 
 Connection conn_find_forward(Topology *t, RouterPortPair out_port);
@@ -178,7 +179,7 @@ typedef struct Router {
     TopoDesc top_desc;
     long last_tick; // prevents double-tick in single cycle (initially -1)
     long flit_payload_counter; // for simple payload generation
-    int reschedule_next_tick; // marks whether to self-tick at the next cycle
+    int reschedule_next_tick;  // marks whether to self-tick at the next cycle
     Channel **input_channels;  // accessor to the input channels
     Channel **output_channels; // accessor to the output channels
     InputUnit *input_units;    // input units
@@ -190,6 +191,8 @@ typedef struct Router {
 
 Router router_create(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id,
                      int radix, Channel **in_chs, Channel **out_chs);
+void router_print_state(Router *r);
+void router_destroy(Router *r);
 
 // Events and scheduling.
 void router_tick(Router *r);
@@ -210,8 +213,5 @@ void update_states(Router *r);
 // Allocators and arbiters.
 int vc_arbit_round_robin(Router *r, int out_port);
 int sa_arbit_round_robin(Router *r, int out_port);
-
-void router_print_state(Router *r);
-void router_destroy(Router *r);
 
 #endif
