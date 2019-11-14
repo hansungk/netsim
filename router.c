@@ -105,6 +105,8 @@ int topology_connect(Topology *t, RouterPortPair input, RouterPortPair output)
     int old_output_i = hmgeti(t->forward_hash, input);
     int old_input_i = hmgeti(t->reverse_hash, output);
     if (old_output_i >= 0 || old_input_i >= 0) {
+        // FIXME: When only one of _i's are >= 0, this results in buffer
+        // overflow.
         RouterPortPair old_output = t->forward_hash[old_output_i].value.dst;
         RouterPortPair old_input = t->reverse_hash[old_input_i].value.src;
         if (input.id.type == old_input.id.type &&
