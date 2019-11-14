@@ -174,6 +174,7 @@ typedef struct Router {
     TopoDesc top_desc;
     long last_tick; // prevents double-tick in single cycle (initially -1)
     long flit_payload_counter; // for simple payload generation
+    long packet_len;           // length of a packet in flits
     int reschedule_next_tick;  // marks whether to self-tick at the next cycle
     Channel **input_channels;  // accessor to the input channels
     Channel **output_channels; // accessor to the output channels
@@ -184,8 +185,9 @@ typedef struct Router {
     int sa_last_grant_input;   // for round-robin arbitration
 } Router;
 
-Router router_create(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id,
-                     int radix, Channel **in_chs, Channel **out_chs);
+Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
+                     TopoDesc td, long packet_len, Channel **in_chs,
+                     Channel **out_chs);
 void router_print_state(Router *r);
 void router_destroy(Router *r);
 

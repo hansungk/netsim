@@ -212,7 +212,8 @@ int topology_connect_ring(Topology *t, const int *ids, int direction)
 //
 // dimension: size of the 'normal' array.
 // offset: offset of the lowest index.
-int topology_connect_torus_dimension(Topology *t, int k, int r, int dimension, int *normal, int offset)
+int topology_connect_torus_dimension(Topology *t, int k, int r, int dimension,
+                                     int *normal, int offset)
 {
     printf("Normal=[%d,%d,%d]\n", normal[0], normal[1], normal[2]);
 
@@ -382,8 +383,9 @@ static void output_unit_destroy(OutputUnit *ou)
     queue_free(ou->buf_credit);
 }
 
-Router router_create(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id,
-                     int radix, Channel **in_chs, Channel **out_chs)
+Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
+                     TopoDesc td, long packet_len, Channel **in_chs,
+                     Channel **out_chs)
 {
     Channel **input_channels = NULL;
     Channel **output_channels = NULL;
@@ -420,6 +422,7 @@ Router router_create(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id,
         .stat = st,
         .top_desc = td,
         .last_tick = -1,
+        .packet_len = packet_len,
         .input_channels = input_channels,
         .output_channels = output_channels,
         .input_units = input_units,

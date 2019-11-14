@@ -13,6 +13,7 @@ Sim sim_create(int debug_mode, int terminal_count, int router_count, int radix,
     sim.debug_mode = debug_mode;
     sim.topology = top;
     sim.channel_delay = 1; /* FIXME hardcoded */
+    sim.packet_len = 4; /* FIXME hardcoded */
 
     // Initialize event system
     eventq_init(&sim.eventq);
@@ -63,10 +64,12 @@ Sim sim_create(int debug_mode, int terminal_count, int router_count, int radix,
         arrput(src_out_chs, src_out_ch);
         arrput(dst_in_chs, dst_in_ch);
 
-        Router src_node = router_create(&sim.eventq, sim.flit_allocator, &sim.stat, td,
-                                        src_id(id), 1, src_in_chs, src_out_chs);
-        Router dst_node = router_create(&sim.eventq, sim.flit_allocator, &sim.stat, td,
-                                        dst_id(id), 1, dst_in_chs, dst_out_chs);
+        Router src_node = router_create(
+            &sim.eventq, src_id(id), 1, sim.flit_allocator, &sim.stat, td,
+            sim.packet_len, src_in_chs, src_out_chs);
+        Router dst_node = router_create(
+            &sim.eventq, dst_id(id), 1, sim.flit_allocator, &sim.stat, td,
+            sim.packet_len, dst_in_chs, dst_out_chs);
         arrput(sim.src_nodes, src_node);
         arrput(sim.dst_nodes, dst_node);
 
@@ -100,8 +103,9 @@ Sim sim_create(int debug_mode, int terminal_count, int router_count, int radix,
             arrput(in_chs, in_ch);
         }
 
-        arrput(sim.routers, router_create(&sim.eventq, sim.flit_allocator, &sim.stat, td,
-                                      rtr_id(id), radix, in_chs, out_chs));
+        arrput(sim.routers,
+               router_create(&sim.eventq, rtr_id(id), radix, sim.flit_allocator,
+                             &sim.stat, td, sim.packet_len, in_chs, out_chs));
 
         arrfree(in_chs);
         arrfree(out_chs);

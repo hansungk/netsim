@@ -19,6 +19,7 @@ typedef struct Sim {
     int debug_mode;
     Topology topology;
     long channel_delay;
+    long packet_len; // length of a packet in flits
     ChannelMap *channel_map;
     Channel *channels;
     Router *routers;
