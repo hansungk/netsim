@@ -101,7 +101,7 @@ int torus_id_xyz_set(int id, int k, int direction, int component)
     int weight = 1;
     for (int i = 0; i < direction; i++)
         weight *= k;
-    int delta = torus_id_xyz_get(id, k, direction) - component;
+    int delta = component - torus_id_xyz_get(id, k, direction);
     return id + delta * weight;
 }
 
@@ -465,12 +465,16 @@ void router_reschedule(Router *r)
 static int torus_align_id(int k, int src_id, int dst_id, int move_direction)
 {
     int component = torus_id_xyz_get(dst_id, k, move_direction);
-    return torus_id_xyz_set(dst_id, k, move_direction, component);
+    printf("%s: src_id=%d, dst_id=%d, move_direction=%d, get=%d, set=%d\n", __func__, src_id, dst_id, move_direction,
+           torus_id_xyz_get(dst_id, k, move_direction),
+           torus_id_xyz_set(src_id, k, move_direction, component));
+    return torus_id_xyz_set(src_id, k, move_direction, component);
 }
 
 // Compute route on a ring that is laid along a single dimension.
 // Expects that src_id and dst_id is on the same ring.
-// Appends computed route after 'path'.
+// Appends computed route after 'path'. Does NOT put the final routing to the
+// terminal node.
 static int *source_route_compute_dimension(TopoDesc td, int src_id, int dst_id,
                                            int direction, int *path)
 {
@@ -484,14 +488,12 @@ static int *source_route_compute_dimension(TopoDesc td, int src_id, int dst_id,
         for (int i = 0; i < cw_dist; i++) {
             arrput(path, get_output_port(direction, 1));
         }
-        arrput(path, TERMINAL_PORT);
     } else {
         // Counterclockwise
         // TODO: if CW == CCW, pick random
         for (int i = 0; i < total - cw_dist; i++) {
             arrput(path, get_output_port(direction, 0));
         }
-        arrput(path, TERMINAL_PORT);
     }
 
     return path;
@@ -507,15 +509,14 @@ int *source_route_compute(TopoDesc td, int src_id, int dst_id)
     int last_src_id = src_id;
     for (int dir = 0; dir < td.r; dir++) {
         int interim_id = torus_align_id(td.k, last_src_id, dst_id, dir);
+        printf("%s: from %d to %d\n", __func__, last_src_id, interim_id);
         path = source_route_compute_dimension(td, last_src_id, interim_id, dir,
                                               path);
         last_src_id = interim_id;
     }
+    // Enter the final destination node.
+    arrput(path, TERMINAL_PORT);
 
-    printf("Source route computation: %d -> %d : {", src_id, dst_id);
-    for (long i = 0; i < arrlen(path); i++)
-        printf("%d,", path[i]);
-    printf("}\n");
     return path;
 }
 
@@ -596,14 +597,22 @@ void source_generate(Router *r)
         return;
     }
 
-    // Handle flit_h = zalloc(flit_allocator);
-    // Flit *flit = zptr(flit_h);
-    Flit *flit = flit_create(FLIT_BODY, r->id.value, (r->id.value + 2) % 4,
+    // TODO: Proper traffic pattern.
+    // Flit *flit = flit_create(FLIT_BODY, r->id.value, (r->id.value + 2) % 4,
+    //                          r->flit_payload_counter);
+    Flit *flit = flit_create(FLIT_BODY, r->id.value, 10,
                              r->flit_payload_counter);
     if (r->flit_payload_counter == 0) {
         flit->type = FLIT_HEAD;
         flit->route_info.path = source_route_compute(
             r->top_desc, flit->route_info.src, flit->route_info.dst);
+
+        debugf(r, "Source route computation: %d -> %d : {",
+                flit->route_info.src, flit->route_info.dst);
+        for (long i = 0; i < arrlen(flit->route_info.path); i++)
+            printf("%d,", flit->route_info.path[i]);
+        printf("}\n");
+
         r->flit_payload_counter++;
     } else if (r->flit_payload_counter == 3 /* FIXME hardcoded packet size */) {
         flit->type = FLIT_TAIL;

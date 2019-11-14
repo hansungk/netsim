@@ -35,7 +35,7 @@ Sim sim_create(int debug_mode, int terminal_count, int router_count, int radix,
     }
 
     // FIXME This is not stored in Sim.
-    TopoDesc td = {TOP_TORUS, 4, 1};
+    TopoDesc td = {TOP_TORUS, 4, 2};
 
     // Initialize terminal nodes
     sim.src_nodes = NULL;
