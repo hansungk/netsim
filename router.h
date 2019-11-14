@@ -5,6 +5,8 @@
 #include "mem.h"
 #include "stb_ds.h"
 
+#define TERMINAL_PORT 0
+
 typedef struct Stat {
     long double_tick_count;
 } Stat;
@@ -24,37 +26,31 @@ void print_conn(const char *name, Connection conn);
 
 // Maps a RouterPortPair to a Connection.  Used for finding a connection with
 // either end of it as the key.
-typedef struct ConnectionHash {
+typedef struct ConnectionMap {
     RouterPortPair key;
     Connection value;
-} ConnectionHash;
+} ConnectionMap;
 
 static const Connection not_connected = (Connection){
-    .src =
-        (RouterPortPair){
-            .id = (Id){.type = ID_RTR, .value = -1},
-            .port = -1,
-        },
-    .dst =
-        (RouterPortPair){
-            .id = (Id){.type = ID_RTR, .value = -1},
-            .port = -1,
-        },
+    .src = (RouterPortPair){.id = {ID_RTR, -1}, .port = -1},
+    .dst = (RouterPortPair){.id = {ID_RTR, -1}, .port = -1},
 };
 
 // Encodes channel connectivity in a bidirectional map.
 // Supports runtime checking for connectivity error.
 typedef struct Topology {
-    ConnectionHash *forward_hash;
-    ConnectionHash *reverse_hash;
+    ConnectionMap *forward_hash;
+    ConnectionMap *reverse_hash;
 } Topology;
-
-Topology topology_ring(int n);
-Topology topology_torus(int k, int r);
-void topology_destroy(Topology *top);
 
 Connection conn_find_forward(Topology *t, RouterPortPair out_port);
 Connection conn_find_reverse(Topology *t, RouterPortPair in_port);
+
+int torus_id_xyz_get(int id, int k, int direction);
+int torus_id_xyz_set(int id, int k, int direction, int component);
+Topology topology_ring(int n);
+Topology topology_torus(int k, int r);
+void topology_destroy(Topology *top);
 
 enum TopoType {
     TOP_TORUS,
@@ -67,7 +63,6 @@ typedef struct TopoDesc {
     int r; // dimension of torus
 } TopoDesc;
 
-/// Source-side all-in-one route computation.
 int *source_route_compute(TopoDesc td, int src_id, int dst_id);
 
 enum FlitType {

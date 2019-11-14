@@ -86,6 +86,33 @@ void print_conn(const char *name, Connection conn)
            conn.dst.id.value, conn.dst.port);
 }
 
+// Get the component of id along 'direction' axis.
+int torus_id_xyz_get(int id, int k, int direction)
+{
+    int val = id;
+    for (int i = 0; i < direction; i++)
+        val /= k;
+    return val % k;
+}
+
+// Set the component of id along 'direction' axis to 'component'.
+int torus_id_xyz_set(int id, int k, int direction, int component)
+{
+    int weight = 1;
+    for (int i = 0; i < direction; i++)
+        weight *= k;
+    int delta = torus_id_xyz_get(id, k, direction) - component;
+    return id + delta * weight;
+}
+
+int torus_set_id_xyz(int id, int k, int direction)
+{
+    int val = id;
+    for (int i = 0; i < direction; i++)
+        val /= k;
+    return val % k;
+}
+
 Topology topology_create(void)
 {
     return (Topology){
@@ -145,6 +172,13 @@ int topology_connect_terminals(Topology *t, const int *ids)
     return 1;
 }
 
+// direction: dimension that the path is in. XYZ = 012.
+// to_larger: whether the output port points to a Router with higher ID or not.
+static int get_output_port(int direction, int to_larger)
+{
+    return direction * 2 + (to_larger ? 2 : 1);
+}
+
 // Port usage: 0:terminal, 1:counter-clockwise, 2:clockwise
 int topology_connect_ring(Topology *t, const int *ids, int direction)
 {
@@ -153,8 +187,8 @@ int topology_connect_ring(Topology *t, const int *ids, int direction)
         printf("%d,", ids[i]);
     printf("}\n");
 
-    int port_cw = direction * 2 + 2;
-    int port_ccw = direction * 2 + 1;
+    int port_cw = get_output_port(direction, 1);
+    int port_ccw = get_output_port(direction, 0);
     int res = 1;
     for (long i = 0; i < arrlen(ids); i++) {
         int l = ids[i];
@@ -376,8 +410,8 @@ Router router_create(EventQueue *eq, Alloc *fa, Stat *st, TopoDesc td, Id id,
         assert(arrlen(output_units) == 1);
         // There are no route computation stages for terminal nodes, so set the
         // routed ports for each IU/OU statically here.
-        input_units[0].route_port = 0;
-        output_units[0].input_port = 0;
+        input_units[0].route_port = TERMINAL_PORT;
+        output_units[0].input_port = TERMINAL_PORT;
     }
 
     return (Router){
@@ -415,24 +449,68 @@ void router_reschedule(Router *r)
     }
 }
 
+// Compute the ID of the router which is the result of moving 'src_id' along
+// the 'move_direction' axis to be aligned with 'dst__id'.  That is, compute the
+// ID that has the same component along the 'direction' axis as 'dst_id', and
+// along all the other axes as 'src_id'.
+//
+//        move_direction
+// src_id -------------> (return)
+//                          |
+//                        dst_id
+//
+// This function is mainly used for computing IDs of the intermediate nodes in
+// the dimension order routing.
+static int torus_align_id(int k, int src_id, int dst_id, int move_direction)
+{
+    int component = torus_id_xyz_get(dst_id, k, move_direction);
+    return torus_id_xyz_set(dst_id, k, move_direction, component);
+}
+
+// Compute route on a ring that is laid along a single dimension.
+// Expects that src_id and dst_id is on the same ring.
+// Appends computed route after 'path'.
+static int *source_route_compute_dimension(TopoDesc td, int src_id, int dst_id,
+                                           int direction, int *path)
+{
+    int total = td.k;
+    int src_id_xyz = torus_id_xyz_get(src_id, td.k, direction);
+    int dst_id_xyz = torus_id_xyz_get(dst_id, td.k, direction);
+    int cw_dist = (dst_id_xyz - src_id_xyz + total) % total;
+
+    if (cw_dist <= total / 2) {
+        // Clockwise
+        for (int i = 0; i < cw_dist; i++) {
+            arrput(path, get_output_port(direction, 1));
+        }
+        arrput(path, TERMINAL_PORT);
+    } else {
+        // Counterclockwise
+        // TODO: if CW == CCW, pick random
+        for (int i = 0; i < total - cw_dist; i++) {
+            arrput(path, get_output_port(direction, 0));
+        }
+        arrput(path, TERMINAL_PORT);
+    }
+
+    return path;
+}
+
+// Source-side all-in-one route computation.
 // Returns an stb array containing the series of routed output ports.
 int *source_route_compute(TopoDesc td, int src_id, int dst_id)
 {
     int *path = NULL;
-    int total = td.k;
-    int cw_dist = (dst_id - src_id + total) % total;
-    if (cw_dist <= total / 2) {
-        // Clockwise
-        for (int i = 0; i < cw_dist; i++)
-            arrput(path, 2);
-        arrput(path, 0);
-    } else {
-        // Counterclockwise
-        // TODO: if CW == CCW, pick random
-        for (int i = 0; i < total - cw_dist; i++)
-            arrput(path, 1);
-        arrput(path, 0);
+
+    // Dimension-order routing. Order is XYZ.
+    int last_src_id = src_id;
+    for (int dir = 0; dir < td.r; dir++) {
+        int interim_id = torus_align_id(td.k, last_src_id, dst_id, dir);
+        path = source_route_compute_dimension(td, last_src_id, interim_id, dir,
+                                              path);
+        last_src_id = interim_id;
     }
+
     printf("Source route computation: %d -> %d : {", src_id, dst_id);
     for (long i = 0; i < arrlen(path); i++)
         printf("%d,", path[i]);
@@ -441,10 +519,10 @@ int *source_route_compute(TopoDesc td, int src_id, int dst_id)
 }
 
 // Tick a router. This function does all of the work that a router has to
-// process in a single cycle, i.e. all of its pipeline stages and statistics
-// update. This simplifies the event system by streamlining event types into a
-// single one, and making the order between them the only thing for us to
-// consider.
+// process in a single cycle, i.e. all pipeline stages and statistics update.
+// This simplifies the event system by streamlining event types into a single
+// one, the 'tick event', and letting us to only have to consider the
+// chronological order between them.
 void router_tick(Router *r)
 {
     // Make sure this router has not been already ticked in this cycle.
