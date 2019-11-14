@@ -207,25 +207,6 @@ int topology_connect_ring(Topology *t, const int *ids, int direction)
     return 1;
 }
 
-Topology topology_ring(int n)
-{
-    Topology top = topology_create();
-    int *ids = NULL;
-    int res = 1;
-
-    for (int id = 0; id < n; id++)
-        arrput(ids, id);
-
-    // Inter-router channels
-    res &= topology_connect_ring(&top, ids, 0);
-    // Terminal node channels
-    res &= topology_connect_terminals(&top, ids);
-    assert(res);
-
-    arrfree(ids);
-    return top;
-}
-
 // Connects part of the torus that corresponds to the the given parameters.
 // Calls itself recursively to form the desired connection.
 //
@@ -275,10 +256,25 @@ int topology_connect_torus_dimension(Topology *t, int k, int r, int dimension, i
 
 Topology topology_torus(int k, int r)
 {
-    int normal[NORMALLEN] = {0};
     Topology top = topology_create();
-    int res = topology_connect_torus_dimension(&top, k, r, r, normal, 0);
+
+    int normal[NORMALLEN] = {0};
+    int res = 1;
+
+    // Inter-switch channels
+    res &= topology_connect_torus_dimension(&top, k, r, r, normal, 0);
+
+    // Terminal channels
+    int total_nodes = 1;
+    int *ids = NULL;
+    for (int i = 0; i < r; i++) total_nodes *= k; // k ^ r
+    for (int id = 0; id < total_nodes; id++) {
+        arrput(ids, id);
+    }
+    res &= topology_connect_terminals(&top, ids);
     assert(res);
+
+    arrfree(ids);
     return top;
 }
 

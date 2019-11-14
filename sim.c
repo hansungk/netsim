@@ -51,8 +51,8 @@ Sim sim_create(int debug_mode, int terminal_count, int router_count, int radix,
         RouterPortPair dst_rpp = {dst_id(id), 0};
         Connection src_conn = conn_find_forward(&top, src_rpp);
         Connection dst_conn = conn_find_reverse(&top, dst_rpp);
-        assert(src_conn.src.port != -1);
-        assert(dst_conn.src.port != -1);
+        assert(src_conn.src.port != -1 && "Source is not connected!");
+        assert(dst_conn.src.port != -1 && "Destination is not connected!");
         long src_idx = hmgeti(sim.channel_map, src_conn.uniq);
         long dst_idx = hmgeti(sim.channel_map, dst_conn.uniq);
         assert(src_idx >= 0);

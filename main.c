@@ -9,7 +9,7 @@ int main(int argc, char **argv) {
             debug = 1;
     }
 
-    Topology top = topology_ring(4);
+    Topology top = topology_torus(4, 1);
 
     Sim sim = sim_create(debug, 4, 4, 3, top);
     schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
