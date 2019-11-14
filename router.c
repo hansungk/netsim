@@ -465,9 +465,6 @@ void router_reschedule(Router *r)
 static int torus_align_id(int k, int src_id, int dst_id, int move_direction)
 {
     int component = torus_id_xyz_get(dst_id, k, move_direction);
-    printf("%s: src_id=%d, dst_id=%d, move_direction=%d, get=%d, set=%d\n", __func__, src_id, dst_id, move_direction,
-           torus_id_xyz_get(dst_id, k, move_direction),
-           torus_id_xyz_set(src_id, k, move_direction, component));
     return torus_id_xyz_set(src_id, k, move_direction, component);
 }
 
@@ -509,7 +506,7 @@ int *source_route_compute(TopoDesc td, int src_id, int dst_id)
     int last_src_id = src_id;
     for (int dir = 0; dir < td.r; dir++) {
         int interim_id = torus_align_id(td.k, last_src_id, dst_id, dir);
-        printf("%s: from %d to %d\n", __func__, last_src_id, interim_id);
+        // printf("%s: from %d to %d\n", __func__, last_src_id, interim_id);
         path = source_route_compute_dimension(td, last_src_id, interim_id, dir,
                                               path);
         last_src_id = interim_id;
@@ -625,8 +622,8 @@ void source_generate(Router *r)
     Channel *och = r->output_channels[0];
     channel_put(och, flit);
 
-    debugf(r, "Credit decrement, credit=%d->%d\n", ou->credit_count,
-           ou->credit_count - 1);
+    debugf(r, "Source credit decrement, credit=%d->%d\n", ou->credit_count,
+            ou->credit_count - 1);
     ou->credit_count--;
     assert(ou->credit_count >= 0);
 
@@ -963,7 +960,7 @@ void switch_alloc(Router *r)
                     }
                     r->reschedule_next_tick = 1;
                 } else if (ou->credit_count == 0) {
-                    debugf(r, "SA: switching to CW\n");
+                    // debugf(r, "SA: switching to CW\n");
                     iu->next_global = STATE_CREDWAIT;
                     ou->next_global = STATE_CREDWAIT;
                     // debugf(this, "SA: next state is CreditWait\n");
