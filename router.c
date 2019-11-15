@@ -185,19 +185,19 @@ static int get_output_port(int direction, int to_larger)
 }
 
 // Port usage: 0:terminal, 1:counter-clockwise, 2:clockwise
-int topology_connect_ring(Topology *t, const int *ids, int direction)
+static int topology_connect_ring(Topology *t, long size, const int *ids, int direction)
 {
     printf("Connecting ring: {");
-    for (long i = 0; i < arrlen(ids); i++)
+    for (long i = 0; i < size; i++)
         printf("%d,", ids[i]);
     printf("}\n");
 
     int port_cw = get_output_port(direction, 1);
     int port_ccw = get_output_port(direction, 0);
     int res = 1;
-    for (long i = 0; i < arrlen(ids); i++) {
+    for (long i = 0; i < size; i++) {
         int l = ids[i];
-        int r = ids[(i + 1) % arrlen(ids)];
+        int r = ids[(i + 1) % size];
         RouterPortPair lport = {rtr_id(l), port_cw};
         RouterPortPair rport = {rtr_id(r), port_ccw};
 
@@ -229,11 +229,10 @@ int topology_connect_torus_dimension(Topology *t, int k, int r, int dimension,
         int stride = 1;
         for (int i = 0; i < dimension; i++, stride *= k) {
             if (normal[i] == 0) {
-                int *ids = NULL;
+                int ids[NORMALLEN];
                 for (int j = 0; j < k; j++)
-                    arrput(ids, offset + j * stride);
-                res &= topology_connect_ring(t, ids, i);
-                arrfree(ids);
+                    ids[j] = offset + j * stride;
+                res &= topology_connect_ring(t, k, ids, i);
                 break; // only one 0 in normal
             }
         }
