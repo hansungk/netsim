@@ -210,6 +210,7 @@ void sim_report(Sim *sim) {
 // Process an event.
 void sim_process(Sim *sim, Event e)
 {
+    printf("%s: e.id.val=%d\n", __func__, e.id.value);
     if (is_src(e.id)) {
         e.f(&sim->src_nodes[e.id.value]);
     } else if (is_dst(e.id)) {

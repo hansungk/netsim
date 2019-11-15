@@ -22,6 +22,12 @@ typedef struct Connection {
     int uniq; // used as hash key
 } Connection;
 
+static const Connection not_connected = {
+    .src = (RouterPortPair){.id = {ID_RTR, -1}, .port = -1},
+    .dst = (RouterPortPair){.id = {ID_RTR, -1}, .port = -1},
+    .uniq = -1,
+};
+
 void print_conn(const char *name, Connection conn);
 
 // Maps a RouterPortPair to a Connection.  Used for finding a connection with
@@ -30,11 +36,6 @@ typedef struct ConnectionMap {
     RouterPortPair key;
     Connection value;
 } ConnectionMap;
-
-static const Connection not_connected = (Connection){
-    .src = (RouterPortPair){.id = {ID_RTR, -1}, .port = -1},
-    .dst = (RouterPortPair){.id = {ID_RTR, -1}, .port = -1},
-};
 
 // Encodes channel connectivity in a bidirectional map.
 // Supports runtime checking for connectivity error.

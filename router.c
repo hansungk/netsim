@@ -1,6 +1,7 @@
 #include "router.h"
 #include "queue.h"
 #include "stb_ds.h"
+#include <stdarg.h>
 #include <stdio.h>
 #include <assert.h>
 
@@ -28,6 +29,8 @@ Channel channel_create(EventQueue *eq, long dl, const Connection conn)
     ch.conn = conn;
     ch.eventq = eq;
     ch.delay = dl;
+    ch.buf = NULL;
+    ch.buf_credit = NULL;
     queue_init(ch.buf, 4); // FIXME hardcoded
     queue_init(ch.buf_credit, 4); // FIXME hardcoded
     return ch;
@@ -215,8 +218,6 @@ int topology_connect_ring(Topology *t, const int *ids, int direction)
 int topology_connect_torus_dimension(Topology *t, int k, int r, int dimension,
                                      int *normal, int offset)
 {
-    printf("Normal=[%d,%d,%d]\n", normal[0], normal[1], normal[2]);
-
     int res = 1;
     int zeros = 0;
     for (int i = 0; i < dimension; i++)
@@ -312,13 +313,14 @@ void flit_destroy(Flit *flit)
     free(flit);
 }
 
+// 's' should be at least IDSTRLEN large.
 char *flit_str(const Flit *flit, char *s)
 {
     // FIXME: Rename IDSTRLEN!
     if (flit)
         snprintf(s, IDSTRLEN, "{%d.p%ld}", flit->route_info.src, flit->payload);
     else
-        snprintf(s, IDSTRLEN, "");
+        *s = '\0';
     return s;
 }
 
@@ -526,8 +528,8 @@ void router_tick(Router *r)
 {
     // Make sure this router has not been already ticked in this cycle.
     if (curr_time(r->eventq) == r->last_tick) {
-        // dbg() << "WARN: double tick! curr_time=" << curr_time(eventq)
-        //       << ", last_tick=" << last_tick << std::endl;
+        debugf(r, "WARN: double tick! curr_time=%ld, last_tick=%ld\n",
+               curr_time(r->eventq), r->last_tick);
         r->stat->double_tick_count++;
         return;
     }
