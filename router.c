@@ -187,7 +187,7 @@ static int get_output_port(int direction, int to_larger)
 // Port usage: 0:terminal, 1:counter-clockwise, 2:clockwise
 static int topology_connect_ring(Topology *t, long size, const int *ids, int direction)
 {
-    printf("Connecting ring: {");
+    printf("%s: ids={", __func__);
     for (long i = 0; i < size; i++)
         printf("%d,", ids[i]);
     printf("}\n");
@@ -527,8 +527,8 @@ void router_tick(Router *r)
 {
     // Make sure this router has not been already ticked in this cycle.
     if (curr_time(r->eventq) == r->last_tick) {
-        debugf(r, "WARN: double tick! curr_time=%ld, last_tick=%ld\n",
-               curr_time(r->eventq), r->last_tick);
+        // debugf(r, "WARN: double tick! curr_time=%ld, last_tick=%ld\n",
+        //        curr_time(r->eventq), r->last_tick);
         r->stat->double_tick_count++;
         return;
     }

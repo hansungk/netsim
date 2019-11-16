@@ -27,8 +27,8 @@ typedef struct Sim {
     Router *dst_nodes;
 } Sim;
 
-Sim sim_create(int debug_mode, int terminal_count, int router_count, int radix,
-               Topology top);
+void sim_init(Sim *sim, int debug_mode, int terminal_count, int router_count, int radix,
+              Topology top);
 void sim_run(Sim *sim, long until);
 void sim_process(Sim *sim, Event e);
 void sim_report(Sim *sim);
