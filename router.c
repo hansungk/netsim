@@ -7,6 +7,7 @@
 
 // Maximum supported torus dimension.
 #define NORMALLEN 10
+#define CHANNEL_SLACK 4
 
 void debugf(Router *r, const char *fmt, ...)
 {
@@ -31,8 +32,8 @@ Channel channel_create(EventQueue *eq, long dl, const Connection conn)
     ch.delay = dl;
     ch.buf = NULL;
     ch.buf_credit = NULL;
-    queue_init(ch.buf, dl);
-    queue_init(ch.buf_credit, 4); // FIXME arbitrary value (larger than 1)
+    queue_init(ch.buf, dl + CHANNEL_SLACK);
+    queue_init(ch.buf_credit, CHANNEL_SLACK);
     return ch;
 }
 
@@ -45,6 +46,7 @@ void channel_destroy(Channel *ch)
 void channel_put(Channel *ch, Flit *flit)
 {
     TimedFlit tf = {curr_time(ch->eventq) + ch->delay, flit};
+    assert(!queue_full(ch->buf));
     queue_put(ch->buf, tf);
     reschedule(ch->eventq, ch->delay, tick_event_from_id(ch->conn.dst.id));
 }
