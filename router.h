@@ -5,7 +5,14 @@
 #include "mem.h"
 #include "stb_ds.h"
 
+// Port that is always connected to a terminal.
 #define TERMINAL_PORT 0
+// Maximum supported torus dimension.
+#define NORMALLEN 10
+// Excess storage in channel to prevent overrun.
+#define CHANNEL_SLACK 4
+// Packet size in number of flits.
+#define PACKET_SIZE 4
 
 typedef struct Stat {
     long double_tick_count;

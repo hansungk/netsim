@@ -5,10 +5,6 @@
 #include <stdio.h>
 #include <assert.h>
 
-// Maximum supported torus dimension.
-#define NORMALLEN 10
-#define CHANNEL_SLACK 4
-
 void debugf(Router *r, const char *fmt, ...)
 {
     char s[IDSTRLEN];
@@ -353,7 +349,7 @@ char *globalstate_str(enum GlobalState state, char *s)
     return s;
 }
 
-static InputUnit input_unit_create(int bufsize)
+static InputUnit inputunit_create(int bufsize)
 {
     Flit **buf = NULL;
     queue_init(buf, bufsize * 2);
@@ -368,7 +364,7 @@ static InputUnit input_unit_create(int bufsize)
     };
 }
 
-static OutputUnit output_unit_create(int bufsize)
+static OutputUnit outputunit_create(int bufsize)
 {
     Credit *buf_credit = NULL;
     queue_init(buf_credit, bufsize * 2); // FIXME: unnecessarily big.
@@ -382,12 +378,12 @@ static OutputUnit output_unit_create(int bufsize)
     };
 }
 
-static void input_unit_destroy(InputUnit *iu)
+static void inputunit_destroy(InputUnit *iu)
 {
     queue_free(iu->buf);
 }
 
-static void output_unit_destroy(OutputUnit *ou)
+static void outputunit_destroy(OutputUnit *ou)
 {
     queue_free(ou->buf_credit);
 }
@@ -414,8 +410,8 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
     InputUnit *input_units = NULL;
     OutputUnit *output_units = NULL;
     for (int port = 0; port < radix; port++) {
-        InputUnit iu = input_unit_create(input_buf_size);
-        OutputUnit ou = output_unit_create(input_buf_size);
+        InputUnit iu = inputunit_create(input_buf_size);
+        OutputUnit ou = outputunit_create(input_buf_size);
         arrput(input_units, iu);
         arrput(output_units, ou);
     }
@@ -450,8 +446,8 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
 void router_destroy(Router *r)
 {
     for (int port = 0; port < r->radix; port++) {
-        input_unit_destroy(&r->input_units[port]);
-        output_unit_destroy(&r->output_units[port]);
+        inputunit_destroy(&r->input_units[port]);
+        outputunit_destroy(&r->output_units[port]);
     }
     arrfree(r->input_units);
     arrfree(r->output_units);
@@ -629,7 +625,7 @@ void source_generate(Router *r)
         printf("}\n");
 
         r->flitnum++;
-    } else if (r->flitnum == 3 /* FIXME hardcoded packet size */) {
+    } else if (r->flitnum == PACKET_SIZE - 1) {
         flit->type = FLIT_TAIL;
         r->flitnum = 0;
     } else {
@@ -650,7 +646,8 @@ void source_generate(Router *r)
     char s[IDSTRLEN];
     debugf(r, "Flit created and sent: %s\n", flit_str(flit, s));
 
-    // TODO: for now, infinitely generate flits.
+    // Infinitely generate flits.
+    // TODO: Set and control generation rate.
     r->reschedule_next_tick = 1;
 }
 
