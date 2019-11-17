@@ -15,10 +15,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-# target_compile_options(netsim PRIVATE -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer
-#     -fsanitize=address,leak,undefined)
-# target_link_libraries(netsim PRIVATE -fno-omit-frame-pointer
-#     -fsanitize=address,leak,undefined)
 target_compile_options(netsim PRIVATE -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer)
 target_link_libraries(netsim PRIVATE -fno-omit-frame-pointer)
 
@@ -27,5 +23,11 @@ if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
 elseif (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     target_compile_options(netsim PRIVATE -fdiagnostics-color)
 endif()
+
+target_link_libraries(netsim PRIVATE yaml)
+
+# Comment this out to disable AddressSanitizer.
+target_compile_options(netsim PRIVATE -fsanitize=address,leak,undefined)
+target_link_libraries(netsim PRIVATE -fsanitize=address,leak,undefined)
 
 set (CMAKE_EXPORT_COMPILE_COMMANDS ON)
