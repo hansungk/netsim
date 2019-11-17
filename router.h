@@ -14,8 +14,20 @@
 // Packet size in number of flits.
 #define PACKET_SIZE 4
 
+typedef struct PacketTimestamp {
+    long gen; // cycle # that the packet was generated
+    long arr; // cycle # that the whole packet arrived
+} PacketTimestamp;
+
+// Used to track the network latency of a packet.
+typedef struct PacketTimestampMap {
+    long key; // packet ID
+    PacketTimestamp value;
+} PacketTimestampMap;
+
 typedef struct Stat {
     long double_tick_count;
+    PacketTimestampMap *packet_timestamp_map;
 } Stat;
 
 typedef struct RouterPortPair {
@@ -176,12 +188,12 @@ typedef struct Router {
     Id id;                  // router ID
     int radix;              // radix
     long flit_arrive_count; // # of flits arrived for the destination node
-    long flit_gen_count;    // # of flits generated for the destination node
+    long flit_depart_count; // # of flits departed for the destination node
     EventQueue *eventq;     // reference to the simulator-global event queue
     Alloc *flit_allocator;
     Stat *stat;
     TopoDesc top_desc;
-    long last_tick; // prevents double-tick in single cycle (initially -1)
+    long last_tick;            // prevents double-tick in a cycle (initially -1)
     long flit_payload_counter; // for simple payload generation
     long flitnum;              // n-th flit counter of a packet
     long packet_len;           // length of a packet in flits

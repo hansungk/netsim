@@ -192,7 +192,7 @@ void sim_report(Sim *sim) {
     for (long i = 0; i < arrlen(sim->src_nodes); i++) {
         Router *src = &sim->src_nodes[i];
         printf("[%s] ", id_str(src->id, s));
-        printf("# of flits generated: %ld\n", src->flit_gen_count);
+        printf("# of flits generated: %ld\n", src->flit_depart_count);
     }
 
     for (long i = 0; i < arrlen(sim->dst_nodes); i++) {
@@ -234,5 +234,7 @@ void sim_destroy(Sim *sim)
     arrfree(sim->src_nodes);
     arrfree(sim->dst_nodes);
 
+    // Stat
+    hmfree(sim->stat.packet_timestamp_map);
     eventq_destroy(&sim->eventq);
 }

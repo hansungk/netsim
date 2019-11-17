@@ -627,10 +627,15 @@ void source_generate(Router *r)
             r->flitnum++;
         }
 
+        queue_put(r->source_queue, flit);
+
+        // Record packet generation time.
+        PacketTimestamp ts = {.gen = curr_time(r->eventq), .arr = -1};
+        hmput(r->stat->packet_timestamp_map, flit->payload, ts);
+
         char s[IDSTRLEN];
         debugf(r, "Flit generated: %s\n", flit_str(flit, s));
         debugf(r, "Source queue len=%ld\n", queue_len(r->source_queue));
-        queue_put(r->source_queue, flit);
     }
 
     assert(r->radix == 1);
@@ -646,7 +651,7 @@ void source_generate(Router *r)
         ou->credit_count--;
         assert(ou->credit_count >= 0);
 
-        r->flit_gen_count++;
+        r->flit_depart_count++;
 
         char s[IDSTRLEN];
         debugf(r, "Flit sent: %s\n", flit_str(ready_flit, s));
@@ -666,10 +671,18 @@ void destination_consume(Router *r)
 
     if (!queue_empty(iu->buf)) {
         Flit *flit = queue_front(iu->buf);
+
+        // Record packet arrival time.
+        int hi = hmgeti(r->stat->packet_timestamp_map, flit->payload);
+        assert(hi >= 0 && "Packet not recorded upon generation!");
+        r->stat->packet_timestamp_map[hi].value.arr = curr_time(r->eventq);
+        long arr = r->stat->packet_timestamp_map[hi].value.arr;
+        long gen = r->stat->packet_timestamp_map[hi].value.gen;
+
         char s[IDSTRLEN];
         debugf(r, "Destination buf size=%zd\n", queue_len(iu->buf));
-        debugf(r, "Flit arrived: %s\n", flit_str(flit, s));
-        flit_destroy(flit);
+        debugf(r, "Flit arrived: %s, latency=%ld (arr=%ld, gen=%ld)\n",
+               flit_str(flit, s), arr - gen, arr, gen);
 
         r->flit_arrive_count++;
         queue_pop(iu->buf);
@@ -684,6 +697,8 @@ void destination_consume(Router *r)
 
         // Self-tick autonomously unless all input ports are empty.
         r->reschedule_next_tick = 1;
+
+        flit_destroy(flit);
     }
 }
 
