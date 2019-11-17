@@ -597,37 +597,17 @@ void route_compute(Router *r)
         InputUnit *iu = &r->input_units[iport];
 
         if (iu->global == STATE_ROUTING) {
-            Flit *flit = queue_front(iu->buf);
-            char s[IDSTRLEN];
-            debugf(r, "Route computation: %s\n", flit_str(flit, s));
             assert(!queue_empty(iu->buf));
-
-            // TODO: Simple algorithmic routing: keep rotating clockwise until
-            // destination is met.
-            // if (flit.route_info.dst == std::get<RtrId>(id).id) {
-            //     // Port 0 is always connected to a terminal node
-            //     iu->route_port = 0;
-            // } else {
-            //     int total = 4; /* FIXME: hardcoded */
-            //     int cw_dist =
-            //         (flit.route_info.dst - flit.route_info.src + total) %
-            //         total;
-            //     if (cw_dist <= total / 2) {
-            //         // Clockwise is better
-            //         iu->route_port = 2;
-            //     } else {
-            //         // TODO: if CW == CCW, pick random
-            //         iu->route_port = 1;
-            //     }
-            // }
+            Flit *flit = queue_front(iu->buf);
 
             assert(flit->type == FLIT_HEAD);
-            debugf(r, "idx=%ld, arrlenu=%ld\n", flit->route_info.idx, arrlenu(flit->route_info.path));
             assert(flit->route_info.idx < arrlenu(flit->route_info.path));
-            debugf(r, "RC: path size = %zd\n", arrlen(flit->route_info.path));
             iu->route_port = flit->route_info.path[flit->route_info.idx];
+
+            char s[IDSTRLEN];
             debugf(r, "RC success for %s (idx=%zu, oport=%d)\n",
                    flit_str(flit, s), flit->route_info.idx, iu->route_port);
+
             flit->route_info.idx++;
 
             // RC -> VA transition
