@@ -33,9 +33,6 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
         hmput(sim->channel_map, ch->conn.uniq, ch);
     }
 
-    // FIXME This is not stored in Sim.
-    TopoDesc td = {TOP_TORUS, 4, 2};
-
     // Initialize terminal nodes
     sim->src_nodes = NULL;
     sim->dst_nodes = NULL;
@@ -64,10 +61,10 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
         arrput(dst_in_chs, dst_in_ch);
 
         Router src_node = router_create(
-            &sim->eventq, src_id(id), 1, sim->flit_allocator, &sim->stat, td,
+            &sim->eventq, src_id(id), 1, sim->flit_allocator, &sim->stat, top.desc,
             sim->packet_len, src_in_chs, src_out_chs, input_buf_size);
         Router dst_node = router_create(
-            &sim->eventq, dst_id(id), 1, sim->flit_allocator, &sim->stat, td,
+            &sim->eventq, dst_id(id), 1, sim->flit_allocator, &sim->stat, top.desc,
             sim->packet_len, dst_in_chs, dst_out_chs, input_buf_size);
         arrput(sim->src_nodes, src_node);
         arrput(sim->dst_nodes, dst_node);
@@ -104,7 +101,7 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
 
         arrput(sim->routers,
                router_create(&sim->eventq, rtr_id(id), radix,
-                             sim->flit_allocator, &sim->stat, td,
+                             sim->flit_allocator, &sim->stat, top.desc,
                              sim->packet_len, in_chs, out_chs, input_buf_size));
 
         arrfree(in_chs);

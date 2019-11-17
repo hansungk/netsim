@@ -121,10 +121,7 @@ int torus_set_id_xyz(int id, int k, int direction)
 
 Topology topology_create(void)
 {
-    return (Topology){
-        .forward_hash = NULL,
-        .reverse_hash = NULL,
-    };
+    return (Topology){0};
 }
 
 void topology_destroy(Topology *top)
@@ -261,6 +258,7 @@ int topology_connect_torus_dimension(Topology *t, int k, int r, int dimension,
 Topology topology_torus(int k, int r)
 {
     Topology top = topology_create();
+    top.desc = (TopoDesc){TOP_TORUS, k, r};
 
     int normal[NORMALLEN] = {0};
     int res = 1;
@@ -703,7 +701,7 @@ void fetch_flit(Router *r)
         assert(!queue_full(iu->buf));
         queue_put(iu->buf, flit);
 
-        assert((size_t)queue_len(iu->buf) <= r->input_buf_size &&
+        assert(queue_len(iu->buf) <= r->input_buf_size &&
                "Input buffer overflow!");
     }
 }

@@ -37,22 +37,6 @@ typedef struct ConnectionMap {
     Connection value;
 } ConnectionMap;
 
-// Encodes channel connectivity in a bidirectional map.
-// Supports runtime checking for connectivity error.
-typedef struct Topology {
-    ConnectionMap *forward_hash;
-    ConnectionMap *reverse_hash;
-} Topology;
-
-Connection conn_find_forward(Topology *t, RouterPortPair out_port);
-Connection conn_find_reverse(Topology *t, RouterPortPair in_port);
-
-int torus_id_xyz_get(int id, int k, int direction);
-int torus_id_xyz_set(int id, int k, int direction, int component);
-Topology topology_ring(int n);
-Topology topology_torus(int k, int r);
-void topology_destroy(Topology *top);
-
 enum TopoType {
     TOP_TORUS,
     TOP_FCLOS,
@@ -63,6 +47,22 @@ typedef struct TopoDesc {
     int k; // ring length of torus
     int r; // dimension of torus
 } TopoDesc;
+
+// Encodes channel connectivity in a bidirectional map.
+// Supports runtime checking for connectivity error.
+typedef struct Topology {
+    TopoDesc desc;
+    ConnectionMap *forward_hash;
+    ConnectionMap *reverse_hash;
+} Topology;
+
+Connection conn_find_forward(Topology *t, RouterPortPair out_port);
+Connection conn_find_reverse(Topology *t, RouterPortPair in_port);
+
+int torus_id_xyz_get(int id, int k, int direction);
+int torus_id_xyz_set(int id, int k, int direction, int component);
+Topology topology_torus(int k, int r);
+void topology_destroy(Topology *top);
 
 int *source_route_compute(TopoDesc td, int src_id, int dst_id);
 
