@@ -11,7 +11,7 @@ void sim_init(Sim *sim, int debug_mode, int terminal_count, int router_count, in
     sim->flit_allocator = alloc_create(sizeof(Flit));
     sim->debug_mode = debug_mode;
     sim->topology = top;
-    sim->channel_delay = 1; /* FIXME hardcoded */
+    sim->channel_delay = 1000; /* FIXME hardcoded */
     sim->packet_len = 4; /* FIXME hardcoded */
 
     // Initialize the event system

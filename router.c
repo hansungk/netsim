@@ -31,8 +31,8 @@ Channel channel_create(EventQueue *eq, long dl, const Connection conn)
     ch.delay = dl;
     ch.buf = NULL;
     ch.buf_credit = NULL;
-    queue_init(ch.buf, 4); // FIXME hardcoded
-    queue_init(ch.buf_credit, 4); // FIXME hardcoded
+    queue_init(ch.buf, dl);
+    queue_init(ch.buf_credit, 4); // FIXME arbitrary value (larger than 1)
     return ch;
 }
 
@@ -395,7 +395,7 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
     for (long i = 0; i < arrlen(out_chs); i++)
         arrput(output_channels, out_chs[i]);
 
-    size_t input_buf_size = 100;
+    size_t input_buf_size = 10; // FIXME hardcoded
 
     InputUnit *input_units = NULL;
     OutputUnit *output_units = NULL;
@@ -787,6 +787,8 @@ void route_compute(Router *r)
             //     }
             // }
 
+            assert(flit->type == FLIT_HEAD);
+            debugf(r, "idx=%ld, arrlenu=%ld\n", flit->route_info.idx, arrlenu(flit->route_info.path));
             assert(flit->route_info.idx < arrlenu(flit->route_info.path));
             debugf(r, "RC: path size = %zd\n", arrlen(flit->route_info.path));
             iu->route_port = flit->route_info.path[flit->route_info.idx];
@@ -1056,8 +1058,8 @@ void router_print_state(Router *r)
     }
 
     for (int i = 0; i < r->radix; i++) {
-        Channel *ch = r->output_channels[i];
-        printf("Channel[%d]: {", i);
+        Channel *ch = r->input_channels[i];
+        printf("InChannel[%d]: {", i);
         for (long i = queue_fronti(ch->buf); i != queue_backi(ch->buf);
              i = (i + 1) % queue_cap(ch->buf)) {
             TimedFlit tf = ch->buf[i];

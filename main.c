@@ -1,6 +1,7 @@
 #include "sim.h"
 #include "router.h"
 #include "queue.h"
+#include <yaml.h>
 
 int main(int argc, char **argv) {
     int debug = 0;
@@ -13,8 +14,8 @@ int main(int argc, char **argv) {
 
     Sim sim;
     sim_init(&sim, debug, 16, 16, 5, top);
-    schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
-    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(1)));
+    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
+    schedule(&sim.eventq, 0, tick_event_from_id(src_id(1)));
     // schedule(&sim.eventq, 0, tick_event_from_id(src_id(2)));
     // schedule(&sim.eventq, 0, tick_event_from_id(src_id(3)));
 
