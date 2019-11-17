@@ -322,10 +322,12 @@ void flit_destroy(Flit *flit)
 char *flit_str(const Flit *flit, char *s)
 {
     // FIXME: Rename IDSTRLEN!
-    if (flit)
-        snprintf(s, IDSTRLEN, "{s%d.p%ld.f%ld}", flit->route_info.src, flit->payload, flit->flitnum);
-    else
+    if (flit) {
+        snprintf(s, IDSTRLEN, "{s%d.p%ld.f%ld}", flit->route_info.src,
+                 flit->payload, flit->flitnum);
+    } else {
         *s = '\0';
+    }
     return s;
 }
 
@@ -401,11 +403,12 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
     for (long i = 0; i < arrlen(out_chs); i++)
         arrput(output_channels, out_chs[i]);
 
+    // Source queues are supposed to be infinite in size, but since our
+    // queue implementation does not support dynamic extension, let's just
+    // assume a fixed, arbitrary massive size for its queue. Nonurgent TODO.
+    Flit **source_queue = NULL;
     if (is_src(id)) {
-        // Source queues are supposed to be infinite in size, but since our
-        // queue implementation does not support dynamic extension, let's just
-        // assume a fixed, arbitrary massive size for its queue. Nonurgent TODO.
-        // input_buf_size = 10000;
+        queue_init(source_queue, 10000);
     }
 
     InputUnit *input_units = NULL;
@@ -437,6 +440,7 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
         .packet_len = packet_len,
         .input_channels = input_channels,
         .output_channels = output_channels,
+        .source_queue = source_queue,
         .input_units = input_units,
         .output_units = output_units,
         .input_buf_size = input_buf_size,
@@ -451,6 +455,7 @@ void router_destroy(Router *r)
     }
     arrfree(r->input_units);
     arrfree(r->output_units);
+    if (r->source_queue) queue_free(r->source_queue);
     arrfree(r->input_channels);
     arrfree(r->output_channels);
 }

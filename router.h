@@ -182,6 +182,7 @@ typedef struct Router {
     Channel **input_channels;  // accessor to the input channels
     Channel **output_channels; // accessor to the output channels
     long input_buf_size;       // max size of each input flit queue
+    Flit **source_queue;       // source queue
     InputUnit *input_units;    // input units
     OutputUnit *output_units;  // output units
     int va_last_grant_input;   // for round-robin arbitration
