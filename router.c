@@ -600,55 +600,64 @@ void router_tick(Router *r)
 
 void source_generate(Router *r)
 {
-    OutputUnit *ou = &r->output_units[0];
+    if (!queue_full(r->source_queue)) {
+        // TODO: Proper traffic pattern.
+        // Flit *flit = flit_create(FLIT_BODY, r->id.value, (r->id.value + 2) %
+        // 4,
+        //                          r->flit_payload_counter);
+        Flit *flit = flit_create(FLIT_BODY, r->id.value, 10,
+                                 r->flit_payload_counter, r->flitnum);
+        r->flit_payload_counter++;
+        if (r->flitnum == 0) {
+            flit->type = FLIT_HEAD;
+            flit->route_info.path = source_route_compute(
+                r->top_desc, flit->route_info.src, flit->route_info.dst);
+            r->flitnum++;
 
-    if (ou->credit_count <= 0) {
-        debugf(r, "Credit stall!\n");
-        return;
-    }
+            debugf(r, "Source route computation: %d -> %d : {",
+                   flit->route_info.src, flit->route_info.dst);
+            for (long i = 0; i < arrlen(flit->route_info.path); i++) {
+                printf("%d,", flit->route_info.path[i]);
+            }
+            printf("}\n");
+        } else if (r->flitnum == PACKET_SIZE - 1) {
+            flit->type = FLIT_TAIL;
+            r->flitnum = 0;
+        } else {
+            r->flitnum++;
+        }
 
-    // TODO: Proper traffic pattern.
-    // Flit *flit = flit_create(FLIT_BODY, r->id.value, (r->id.value + 2) % 4,
-    //                          r->flit_payload_counter);
-    Flit *flit = flit_create(FLIT_BODY, r->id.value, 10,
-                             r->flit_payload_counter, r->flitnum);
-    r->flit_payload_counter++;
-    if (r->flitnum == 0) {
-        flit->type = FLIT_HEAD;
-        flit->route_info.path = source_route_compute(
-            r->top_desc, flit->route_info.src, flit->route_info.dst);
-
-        debugf(r, "Source route computation: %d -> %d : {",
-                flit->route_info.src, flit->route_info.dst);
-        for (long i = 0; i < arrlen(flit->route_info.path); i++)
-            printf("%d,", flit->route_info.path[i]);
-        printf("}\n");
-
-        r->flitnum++;
-    } else if (r->flitnum == PACKET_SIZE - 1) {
-        flit->type = FLIT_TAIL;
-        r->flitnum = 0;
-    } else {
-        r->flitnum++;
+        char s[IDSTRLEN];
+        debugf(r, "Flit generated: %s\n", flit_str(flit, s));
+        debugf(r, "Source queue len=%ld\n", queue_len(r->source_queue));
+        queue_put(r->source_queue, flit);
     }
 
     assert(r->radix == 1);
-    Channel *och = r->output_channels[0];
-    channel_put(och, flit);
+    OutputUnit *ou = &r->output_units[0];
+    if (!queue_empty(r->source_queue) && ou->credit_count > 0) {
+        Flit *ready_flit = queue_front(r->source_queue);
+        queue_pop(r->source_queue);
+        Channel *och = r->output_channels[0];
+        channel_put(och, ready_flit);
 
-    debugf(r, "Source credit decrement, credit=%d->%d\n", ou->credit_count,
-            ou->credit_count - 1);
-    ou->credit_count--;
-    assert(ou->credit_count >= 0);
+        debugf(r, "Source credit decrement, credit=%d->%d\n", ou->credit_count,
+               ou->credit_count - 1);
+        ou->credit_count--;
+        assert(ou->credit_count >= 0);
 
-    r->flit_gen_count++;
+        r->flit_gen_count++;
 
-    char s[IDSTRLEN];
-    debugf(r, "Flit created and sent: %s\n", flit_str(flit, s));
+        char s[IDSTRLEN];
+        debugf(r, "Flit sent: %s\n", flit_str(ready_flit, s));
 
-    // Infinitely generate flits.
-    // TODO: Set and control generation rate.
-    r->reschedule_next_tick = 1;
+        // Infinitely generate flits.
+        // TODO: Set and control generation rate.
+        r->reschedule_next_tick = 1;
+    } else {
+        debugf(r, "Credit stall!\n");
+        return;
+    }
 }
 
 void destination_consume(Router *r)
