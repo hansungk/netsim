@@ -75,15 +75,15 @@ typedef struct Topology {
     ConnectionMap *reverse_hash;
 } Topology;
 
-Connection conn_find_forward(Topology *t, RouterPortPair out_port);
-Connection conn_find_reverse(Topology *t, RouterPortPair in_port);
-
+int get_output_port(int direction, int to_larger);
 int torus_id_xyz_get(int id, int k, int direction);
 int torus_id_xyz_set(int id, int k, int direction, int component);
+int torus_align_id(int k, int src_id, int dst_id, int move_direction);
 Topology topology_torus(int k, int r);
 void topology_destroy(Topology *top);
 
-int *source_route_compute(TopoDesc td, int src_id, int dst_id);
+Connection conn_find_forward(Topology *t, RouterPortPair out_port);
+Connection conn_find_reverse(Topology *t, RouterPortPair in_port);
 
 enum FlitType {
     FLIT_HEAD,
@@ -217,6 +217,9 @@ void router_destroy(Router *r);
 // Events and scheduling.
 void router_tick(Router *r);
 void router_reschedule(Router *r);
+
+// Routing.
+int *source_route_compute(TopoDesc td, int src_id, int dst_id);
 
 // Pipeline stages.
 void source_generate(Router *r);
