@@ -54,6 +54,7 @@ void channel_put(Channel *ch, Flit *flit)
 void channel_put_credit(Channel *ch, Credit credit)
 {
     TimedCredit tc = {curr_time(ch->eventq) + ch->delay, credit};
+    assert(!queue_full(ch->buf_credit));
     queue_put(ch->buf_credit, tc);
     reschedule(ch->eventq, ch->delay, tick_event_from_id(ch->conn.src.id));
 }
@@ -388,7 +389,7 @@ static void output_unit_destroy(OutputUnit *ou)
 
 Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
                      TopoDesc td, long packet_len, Channel **in_chs,
-                     Channel **out_chs)
+                     Channel **out_chs, long input_buf_size)
 {
     Channel **input_channels = NULL;
     Channel **output_channels = NULL;
@@ -397,7 +398,12 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
     for (long i = 0; i < arrlen(out_chs); i++)
         arrput(output_channels, out_chs[i]);
 
-    size_t input_buf_size = 10; // FIXME hardcoded
+    if (is_src(id)) {
+        // Source queues are supposed to be infinite in size, but since our
+        // queue implementation does not support dynamic extension, let's just
+        // assume a fixed, arbitrary massive size for its queue. Nonurgent TODO.
+        // input_buf_size = 10000;
+    }
 
     InputUnit *input_units = NULL;
     OutputUnit *output_units = NULL;
@@ -672,7 +678,8 @@ void fetch_flit(Router *r)
         Channel *ich = r->input_channels[iport];
         InputUnit *iu = &r->input_units[iport];
         Flit *flit = channel_get(ich);
-        if (!flit) continue;
+        if (!flit)
+            continue;
 
         char s[IDSTRLEN];
         debugf(r, "Fetched flit %s, buf[%d].size()=%zd\n", flit_str(flit, s),
@@ -691,12 +698,13 @@ void fetch_flit(Router *r)
             }
 
             r->reschedule_next_tick = 1;
-            }
+        }
 
-            queue_put(iu->buf, flit);
+        assert(!queue_full(iu->buf));
+        queue_put(iu->buf, flit);
 
-            assert((size_t)queue_len(iu->buf) <= r->input_buf_size &&
-                   "Input buffer overflow!");
+        assert((size_t)queue_len(iu->buf) <= r->input_buf_size &&
+               "Input buffer overflow!");
     }
 }
 

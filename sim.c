@@ -4,8 +4,8 @@
 
 void print_conn(const char *name, Connection conn);
 
-void sim_init(Sim *sim, int debug_mode, int terminal_count, int router_count, int radix,
-              Topology top)
+void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
+              int router_count, int radix, long input_buf_size)
 {
     memset(sim, 0, sizeof(Sim));
     sim->flit_allocator = alloc_create(sizeof(Flit));
@@ -65,10 +65,10 @@ void sim_init(Sim *sim, int debug_mode, int terminal_count, int router_count, in
 
         Router src_node = router_create(
             &sim->eventq, src_id(id), 1, sim->flit_allocator, &sim->stat, td,
-            sim->packet_len, src_in_chs, src_out_chs);
+            sim->packet_len, src_in_chs, src_out_chs, input_buf_size);
         Router dst_node = router_create(
             &sim->eventq, dst_id(id), 1, sim->flit_allocator, &sim->stat, td,
-            sim->packet_len, dst_in_chs, dst_out_chs);
+            sim->packet_len, dst_in_chs, dst_out_chs, input_buf_size);
         arrput(sim->src_nodes, src_node);
         arrput(sim->dst_nodes, dst_node);
 
@@ -103,8 +103,9 @@ void sim_init(Sim *sim, int debug_mode, int terminal_count, int router_count, in
         }
 
         arrput(sim->routers,
-               router_create(&sim->eventq, rtr_id(id), radix, sim->flit_allocator,
-                             &sim->stat, td, sim->packet_len, in_chs, out_chs));
+               router_create(&sim->eventq, rtr_id(id), radix,
+                             sim->flit_allocator, &sim->stat, td,
+                             sim->packet_len, in_chs, out_chs, input_buf_size));
 
         arrfree(in_chs);
         arrfree(out_chs);

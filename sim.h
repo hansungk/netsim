@@ -18,8 +18,9 @@ typedef struct Sim {
     Stat stat;
     int debug_mode;
     Topology topology;
+    long input_buf_size; // router input buffer size
     long channel_delay;
-    long packet_len; // length of a packet in flits
+    long packet_len;    // length of a packet in flits
     ChannelMap *channel_map;
     Channel *channels;
     Router *routers;
@@ -27,8 +28,8 @@ typedef struct Sim {
     Router *dst_nodes;
 } Sim;
 
-void sim_init(Sim *sim, int debug_mode, int terminal_count, int router_count, int radix,
-              Topology top);
+void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
+              int router_count, int radix, long input_buf_size);
 void sim_run(Sim *sim, long until);
 void sim_process(Sim *sim, Event e);
 void sim_report(Sim *sim);
