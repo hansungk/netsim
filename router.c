@@ -298,11 +298,16 @@ Connection conn_find_reverse(Topology *t, RouterPortPair in_port)
         return t->reverse_hash[idx].value;
 }
 
-Flit *flit_create(enum FlitType t, int src, int dst, long p)
+Flit *flit_create(enum FlitType t, int src, int dst, long p, long flitnum)
 {
     Flit *flit = (Flit *)malloc(sizeof(Flit));
     RouteInfo ri = {src, dst, NULL, 0};
-    *flit = (Flit){.type = t, .route_info = ri, .payload = p};
+    *flit = (Flit){
+        .type = t,
+        .route_info = ri,
+        .payload = p,
+        .flitnum = flitnum,
+    };
     return flit;
 }
 
@@ -318,7 +323,7 @@ char *flit_str(const Flit *flit, char *s)
 {
     // FIXME: Rename IDSTRLEN!
     if (flit)
-        snprintf(s, IDSTRLEN, "{%d.p%ld}", flit->route_info.src, flit->payload);
+        snprintf(s, IDSTRLEN, "{s%d.p%ld.f%ld}", flit->route_info.src, flit->payload, flit->flitnum);
     else
         *s = '\0';
     return s;
@@ -605,8 +610,9 @@ void source_generate(Router *r)
     // Flit *flit = flit_create(FLIT_BODY, r->id.value, (r->id.value + 2) % 4,
     //                          r->flit_payload_counter);
     Flit *flit = flit_create(FLIT_BODY, r->id.value, 10,
-                             r->flit_payload_counter);
-    if (r->flit_payload_counter == 0) {
+                             r->flit_payload_counter, r->flitnum);
+    r->flit_payload_counter++;
+    if (r->flitnum == 0) {
         flit->type = FLIT_HEAD;
         flit->route_info.path = source_route_compute(
             r->top_desc, flit->route_info.src, flit->route_info.dst);
@@ -617,12 +623,12 @@ void source_generate(Router *r)
             printf("%d,", flit->route_info.path[i]);
         printf("}\n");
 
-        r->flit_payload_counter++;
-    } else if (r->flit_payload_counter == 3 /* FIXME hardcoded packet size */) {
+        r->flitnum++;
+    } else if (r->flitnum == 3 /* FIXME hardcoded packet size */) {
         flit->type = FLIT_TAIL;
-        r->flit_payload_counter = 0;
+        r->flitnum = 0;
     } else {
-        r->flit_payload_counter++;
+        r->flitnum++;
     }
 
     assert(r->radix == 1);

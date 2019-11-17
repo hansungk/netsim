@@ -85,9 +85,10 @@ typedef struct Flit {
     enum FlitType type;
     RouteInfo route_info;
     long payload;
+    long flitnum;
 } Flit;
 
-Flit *flit_create(enum FlitType t, int src, int dst, long p);
+Flit *flit_create(enum FlitType t, int src, int dst, long p, long flitnum);
 char *flit_str(const Flit *flit, char *s);
 
 typedef struct Credit {
@@ -175,6 +176,7 @@ typedef struct Router {
     TopoDesc top_desc;
     long last_tick; // prevents double-tick in single cycle (initially -1)
     long flit_payload_counter; // for simple payload generation
+    long flitnum;              // n-th flit counter of a packet
     long packet_len;           // length of a packet in flits
     long reschedule_next_tick; // marks whether to self-tick at the next cycle
     Channel **input_channels;  // accessor to the input channels
