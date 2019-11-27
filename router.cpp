@@ -1,6 +1,5 @@
 #include "router.h"
 #include "queue.h"
-#define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -201,43 +200,31 @@ static void outputunit_destroy(OutputUnit *ou)
     queue_free(ou->buf_credit);
 }
 
-Router router_create(EventQueue *eq, Id id, int radix, Stat *st,
-                     TopoDesc td, TrafficDesc trd, long packet_len, Channel **in_chs,
-                     Channel **out_chs, long input_buf_size)
+Router::Router(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
+               TrafficDesc trd, long packet_len, Channel **in_chs,
+               Channel **out_chs, long input_buf_size)
+    : id(id), radix(radix), eventq(eq), stat(st), top_desc(td),
+      traffic_desc(trd), last_tick(-1), packet_len(packet_len),
+      input_buf_size(input_buf_size)
 {
-    Router router;
-    memset(&router, 0, sizeof(Router));
-    router.id = id;
-    router.radix = radix;
-    router.eventq = eq;
-    router.stat = st;
-    router.top_desc = td;
-    router.traffic_desc = trd;
-    router.last_tick = -1;
-    router.packet_len = packet_len;
-    router.input_buf_size = input_buf_size;
-
     // Copy channel list
-    Channel **input_channels = NULL;
-    Channel **output_channels = NULL;
+    input_channels = NULL;
+    output_channels = NULL;
     for (long i = 0; i < arrlen(in_chs); i++)
         arrput(input_channels, in_chs[i]);
     for (long i = 0; i < arrlen(out_chs); i++)
         arrput(output_channels, out_chs[i]);
-    router.input_channels = input_channels;
-    router.output_channels = output_channels;
 
     // Source queues are supposed to be infinite in size, but since our
     // queue implementation does not support dynamic extension, let's just
     // assume a fixed, arbitrary massive size for its queue. Nonurgent TODO.
-    Flit **source_queue = NULL;
+    source_queue = NULL;
     if (is_src(id)) {
         queue_init(source_queue, 10000);
     }
-    router.source_queue = source_queue;
 
-    InputUnit *input_units = NULL;
-    OutputUnit *output_units = NULL;
+    input_units = NULL;
+    output_units = NULL;
     for (int port = 0; port < radix; port++) {
         InputUnit iu = inputunit_create(input_buf_size);
         OutputUnit ou = outputunit_create(input_buf_size);
@@ -253,10 +240,6 @@ Router router_create(EventQueue *eq, Id id, int radix, Stat *st,
         input_units[0].route_port = TERMINAL_PORT;
         output_units[0].input_port = TERMINAL_PORT;
     }
-    router.input_units = input_units;
-    router.output_units = output_units;
-
-    return router;
 }
 
 void router_destroy(Router *r)

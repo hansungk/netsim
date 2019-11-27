@@ -3,6 +3,7 @@
 
 #include "event.h"
 #include "router.h"
+#include <vector>
 
 void fatal(const char *fmt, ...);
 
@@ -12,6 +13,9 @@ typedef struct ChannelMap {
 } ChannelMap;
 
 typedef struct Sim {
+    Sim(int debug_mode, Topology top, int terminal_count,
+        int router_count, int radix, long input_buf_size);
+
     EventQueue eventq; // global event queue
     Stat stat;
     int debug_mode;
@@ -22,13 +26,11 @@ typedef struct Sim {
     long packet_len;    // length of a packet in flits
     ChannelMap *channel_map;
     Channel *channels;
-    Router *routers;
-    Router *src_nodes;
-    Router *dst_nodes;
+    std::vector<Router> routers;
+    std::vector<Router> src_nodes;
+    std::vector<Router> dst_nodes;
 } Sim;
 
-void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
-              int router_count, int radix, long input_buf_size);
 void sim_run(Sim *sim, long until);
 void sim_process(Sim *sim, Event e);
 void sim_report(Sim *sim);

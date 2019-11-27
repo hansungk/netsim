@@ -4,43 +4,37 @@
 
 void print_conn(const char *name, Connection conn);
 
-void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
-              int router_count, int radix, long input_buf_size)
+Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
+         int radix, long input_buf_size)
+    : debug_mode(debug_mode),
+      topology(top)
 {
-    memset(sim, 0, sizeof(Sim));
-    sim->debug_mode = debug_mode;
-    sim->topology = top;
-    sim->channel_delay = 1; /* FIXME hardcoded */
-    sim->packet_len = 4; /* FIXME hardcoded */
+    traffic_desc = {TRF_DESIGNATED, std::vector<int>(16)};
+    traffic_desc.dests[1] = 10;
+    traffic_desc.dests[2] = 10;
+    channel_delay = 1; /* FIXME hardcoded */
+    packet_len = 4; /* FIXME hardcoded */
 
     // Initialize the event system
-    eventq_init(&sim->eventq);
+    eventq_init(&eventq);
 
     // Initialize channels
-    sim->channels = NULL;
+    channels = NULL;
     for (ptrdiff_t i = 0; i < hmlen(top.forward_hash); i++) {
         Connection conn = top.forward_hash[i].value;
         // printf("Found connection: %d.%d.%d -> %d.%d.%d\n", conn.src.id.type, conn.src.id.value,
         //        conn.src.port, conn.dst.id.type, conn.dst.id.value, conn.dst.port);
-        Channel ch = channel_create(&sim->eventq, sim->channel_delay, conn);
-        arrput(sim->channels, ch);
-        // channels.emplace_back(&eventq, sim->channel_delay, conn);
+        Channel ch = channel_create(&eventq, channel_delay, conn);
+        arrput(channels, ch);
+        // channels.emplace_back(&eventq, channel_delay, conn);
     }
-    sim->channel_map = NULL;
-    for (long i = 0; i < arrlen(sim->channels); i++) {
-        Channel *ch = &sim->channels[i];
-        hmput(sim->channel_map, ch->conn.uniq, ch);
+    channel_map = NULL;
+    for (long i = 0; i < arrlen(channels); i++) {
+        Channel *ch = &channels[i];
+        hmput(channel_map, ch->conn.uniq, ch);
     }
-
-    TrafficDesc trd;
-    memset(&trd, 0, sizeof(TrafficDesc));
-    arrsetlen(trd.dests, 16);
-    int dests[] = {0, 10, 10, 0};
-    memcpy(trd.dests, dests, sizeof(dests));
 
     // Initialize terminal nodes
-    sim->src_nodes = NULL;
-    sim->dst_nodes = NULL;
     for (int id = 0; id < terminal_count; id++) {
         // Terminal nodes only have a single port.  Also, destination nodes
         // doesn't have output ports!
@@ -55,24 +49,22 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
         Connection dst_conn = conn_find_reverse(&top, dst_rpp);
         assert(src_conn.src.port != -1 && "Source is not connected!");
         assert(dst_conn.src.port != -1 && "Destination is not connected!");
-        long src_idx = hmgeti(sim->channel_map, src_conn.uniq);
-        long dst_idx = hmgeti(sim->channel_map, dst_conn.uniq);
+        long src_idx = hmgeti(channel_map, src_conn.uniq);
+        long dst_idx = hmgeti(channel_map, dst_conn.uniq);
         assert(src_idx >= 0);
         assert(dst_idx >= 0);
-        Channel *src_out_ch = sim->channel_map[src_idx].value;
-        Channel *dst_in_ch = sim->channel_map[dst_idx].value;
+        Channel *src_out_ch = channel_map[src_idx].value;
+        Channel *dst_in_ch = channel_map[dst_idx].value;
 
         arrput(src_out_chs, src_out_ch);
         arrput(dst_in_chs, dst_in_ch);
 
-        Router src_node = router_create(
-            &sim->eventq, src_id(id), 1, &sim->stat, top.desc, trd,
-            sim->packet_len, src_in_chs, src_out_chs, input_buf_size);
-        Router dst_node = router_create(
-            &sim->eventq, dst_id(id), 1, &sim->stat, top.desc, trd,
-            sim->packet_len, dst_in_chs, dst_out_chs, input_buf_size);
-        arrput(sim->src_nodes, src_node);
-        arrput(sim->dst_nodes, dst_node);
+        src_nodes.emplace_back(&eventq, src_id(id), 1, &stat, top.desc,
+                               traffic_desc, packet_len, src_in_chs,
+                               src_out_chs, input_buf_size);
+        dst_nodes.emplace_back(&eventq, dst_id(id), 1, &stat, top.desc,
+                               traffic_desc, packet_len, dst_in_chs,
+                               dst_out_chs, input_buf_size);
 
         arrfree(src_in_chs);
         arrfree(src_out_chs);
@@ -81,8 +73,6 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
     }
 
     // Initialize router nodes
-    sim->routers = NULL;
-
     for (int id = 0; id < router_count; id++) {
         Channel **in_chs = NULL;
         Channel **out_chs = NULL;
@@ -93,21 +83,20 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
             Connection input_conn = conn_find_reverse(&top, rpp);
             assert(output_conn.src.port != -1);
             assert(input_conn.src.port != -1);
-            long out_idx = hmgeti(sim->channel_map, output_conn.uniq);
-            long in_idx = hmgeti(sim->channel_map, input_conn.uniq);
+            long out_idx = hmgeti(channel_map, output_conn.uniq);
+            long in_idx = hmgeti(channel_map, input_conn.uniq);
             assert(out_idx >= 0);
             assert(in_idx >= 0);
-            Channel *out_ch = sim->channel_map[out_idx].value;
-            Channel *in_ch = sim->channel_map[in_idx].value;
+            Channel *out_ch = channel_map[out_idx].value;
+            Channel *in_ch = channel_map[in_idx].value;
 
             arrput(out_chs, out_ch);
             arrput(in_chs, in_ch);
         }
 
-        Router rtr_node = router_create(
-            &sim->eventq, rtr_id(id), radix, &sim->stat, top.desc, trd,
-            sim->packet_len, in_chs, out_chs, input_buf_size);
-        arrput(sim->routers, rtr_node);
+        routers.emplace_back(&eventq, rtr_id(id), radix, &stat, top.desc,
+                             traffic_desc, packet_len, in_chs, out_chs,
+                             input_buf_size);
 
         arrfree(in_chs);
         arrfree(out_chs);
@@ -145,7 +134,7 @@ int sim_debug_step(Sim *sim)
         sim_run_until(sim, until + 1);
         return 1;
     } else if (!strcmp(line, "p")) {
-        for (long i = 0; i < arrlen(sim->routers); i++) {
+        for (size_t i = 0; i < sim->routers.size(); i++) {
             router_print_state(&sim->routers[i]);
         }
         return 1;
@@ -194,13 +183,13 @@ void sim_report(Sim *sim) {
     printf("# of double ticks: %ld\n", sim->stat.double_tick_count);
     printf("\n");
 
-    for (long i = 0; i < arrlen(sim->src_nodes); i++) {
+    for (size_t i = 0; i < sim->src_nodes.size(); i++) {
         Router *src = &sim->src_nodes[i];
         printf("[%s] ", id_str(src->id, s));
         printf("# of flits generated: %ld\n", src->flit_depart_count);
     }
 
-    for (long i = 0; i < arrlen(sim->dst_nodes); i++) {
+    for (size_t i = 0; i < sim->dst_nodes.size(); i++) {
         Router *dst = &sim->dst_nodes[i];
         printf("[%s] ", id_str(dst->id, s));
         printf("# of flits arrived: %ld\n", dst->flit_arrive_count);
@@ -228,15 +217,12 @@ void sim_destroy(Sim *sim)
         channel_destroy(&sim->channels[i]);
     arrfree(sim->channels);
 
-    for (long i = 0; i < arrlen(sim->routers); i++)
+    for (size_t i = 0; i < sim->routers.size(); i++)
         router_destroy(&sim->routers[i]);
-    for (long i = 0; i < arrlen(sim->src_nodes); i++)
+    for (size_t i = 0; i < sim->src_nodes.size(); i++)
         router_destroy(&sim->src_nodes[i]);
-    for (long i = 0; i < arrlen(sim->dst_nodes); i++)
+    for (size_t i = 0; i < sim->dst_nodes.size(); i++)
         router_destroy(&sim->dst_nodes[i]);
-    arrfree(sim->routers);
-    arrfree(sim->src_nodes);
-    arrfree(sim->dst_nodes);
 
     // Stat
     hmfree(sim->stat.packet_timestamp_map);

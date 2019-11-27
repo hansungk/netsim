@@ -3,6 +3,7 @@
 
 #include "event.h"
 #include "stb_ds.h"
+#include <vector>
 
 // Port that is always connected to a terminal.
 #define TERMINAL_PORT 0
@@ -25,8 +26,8 @@ typedef struct PacketTimestampMap {
 } PacketTimestampMap;
 
 typedef struct Stat {
-    long double_tick_count;
-    PacketTimestampMap *packet_timestamp_map;
+    long double_tick_count = 0;
+    PacketTimestampMap *packet_timestamp_map = NULL;
 } Stat;
 
 typedef struct RouterPortPair {
@@ -89,10 +90,13 @@ enum TrafficType {
     TRF_DESIGNATED,
 };
 
-typedef struct TrafficDesc {
-    enum TrafficType type; // traffic type
-    int *dests;            // destination table
-} TrafficDesc;
+struct TrafficDesc {
+    TrafficDesc() {}
+    TrafficDesc(TrafficType t, std::vector<int> ds) : type(t), dests(ds) {}
+
+    TrafficType type; // traffic type
+    std::vector<int> dests{0};       // destination table
+};
 
 enum FlitType {
     FLIT_HEAD,
@@ -194,32 +198,34 @@ Event tick_event_from_id(Id id);
 /// A router. It can represent any of a switch node, a source node and a
 /// destination node.
 typedef struct Router {
-    Id id;                  // router ID
-    int radix;              // radix
-    long flit_arrive_count; // # of flits arrived for the destination node
-    long flit_depart_count; // # of flits departed for the destination node
-    EventQueue *eventq;     // reference to the simulator-global event queue
+    Router(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
+           TrafficDesc trd, long packet_len, Channel **in_chs,
+           Channel **out_chs, long input_buf_size);
+
+    Id id;                      // router ID
+    int radix;                  // radix
+    long flit_arrive_count = 0; // # of flits arrived for the destination node
+    long flit_depart_count = 0; // # of flits departed for the destination node
+    EventQueue *eventq;         // reference to the simulator-global event queue
     Stat *stat;
     TopoDesc top_desc;
     TrafficDesc traffic_desc;
-    long last_tick;            // prevents double-tick in a cycle (initially -1)
-    long flit_payload_counter; // for simple payload generation
-    long flitnum;              // n-th flit counter of a packet
+    long last_tick = -1;            // prevents double-tick in a cycle
+    long flit_payload_counter = 0; // for simple payload generation
+    long flitnum = 0;          // n-th flit counter of a packet
     long packet_len;           // length of a packet in flits
-    long reschedule_next_tick; // marks whether to self-tick at the next cycle
+    long reschedule_next_tick =
+        -1;                    // marks whether to self-tick at the next cycle
     Channel **input_channels;  // accessor to the input channels
     Channel **output_channels; // accessor to the output channels
     long input_buf_size;       // max size of each input flit queue
     Flit **source_queue;       // source queue
     InputUnit *input_units;    // input units
     OutputUnit *output_units;  // output units
-    int va_last_grant_input;   // for round-robin arbitration
-    int sa_last_grant_input;   // for round-robin arbitration
+    int va_last_grant_input = 0;   // for round-robin arbitration
+    int sa_last_grant_input = 0;   // for round-robin arbitration
 } Router;
 
-Router router_create(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
-                     TrafficDesc trd, long packet_len, Channel **in_chs,
-                     Channel **out_chs, long input_buf_size);
 void router_print_state(Router *r);
 void router_destroy(Router *r);
 

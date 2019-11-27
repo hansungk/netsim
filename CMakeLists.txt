@@ -3,7 +3,7 @@ cmake_minimum_required (VERSION 3.8)
 project (netsim LANGUAGES CXX C)
 
 add_executable (netsim main.cpp sim.cpp router.cpp topology.cpp event.cpp
-    queue.cpp pqueue.c)
+    queue.cpp pqueue.c stb_ds.c)
 target_compile_features(netsim PUBLIC cxx_std_14)
 
 set(default_build_type "Debug")
