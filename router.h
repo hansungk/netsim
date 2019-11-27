@@ -201,6 +201,7 @@ typedef struct Router {
     Router(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
            TrafficDesc trd, long packet_len, Channel **in_chs,
            Channel **out_chs, long input_buf_size);
+    ~Router();
 
     Id id;                      // router ID
     int radix;                  // radix
@@ -227,7 +228,6 @@ typedef struct Router {
 } Router;
 
 void router_print_state(Router *r);
-void router_destroy(Router *r);
 
 // Events and scheduling.
 void router_tick(Router *r);

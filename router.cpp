@@ -242,17 +242,17 @@ Router::Router(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
     }
 }
 
-void router_destroy(Router *r)
+Router::~Router()
 {
-    for (int port = 0; port < r->radix; port++) {
-        inputunit_destroy(&r->input_units[port]);
-        outputunit_destroy(&r->output_units[port]);
+    for (int port = 0; port < radix; port++) {
+        inputunit_destroy(&input_units[port]);
+        outputunit_destroy(&output_units[port]);
     }
-    arrfree(r->input_units);
-    arrfree(r->output_units);
-    if (r->source_queue) queue_free(r->source_queue);
-    arrfree(r->input_channels);
-    arrfree(r->output_channels);
+    arrfree(input_units);
+    arrfree(output_units);
+    if (source_queue) queue_free(source_queue);
+    arrfree(input_channels);
+    arrfree(output_channels);
 }
 
 void router_reschedule(Router *r)

@@ -4,6 +4,7 @@
 #include "event.h"
 #include "router.h"
 #include <vector>
+#include <memory>
 
 void fatal(const char *fmt, ...);
 
@@ -26,9 +27,9 @@ typedef struct Sim {
     long packet_len;    // length of a packet in flits
     ChannelMap *channel_map;
     Channel *channels;
-    std::vector<Router> routers;
-    std::vector<Router> src_nodes;
-    std::vector<Router> dst_nodes;
+    std::vector<std::unique_ptr<Router>> routers;
+    std::vector<std::unique_ptr<Router>> src_nodes;
+    std::vector<std::unique_ptr<Router>> dst_nodes;
 } Sim;
 
 void sim_run(Sim *sim, long until);

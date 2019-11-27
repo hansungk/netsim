@@ -59,12 +59,12 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
         arrput(src_out_chs, src_out_ch);
         arrput(dst_in_chs, dst_in_ch);
 
-        src_nodes.emplace_back(&eventq, src_id(id), 1, &stat, top.desc,
-                               traffic_desc, packet_len, src_in_chs,
-                               src_out_chs, input_buf_size);
-        dst_nodes.emplace_back(&eventq, dst_id(id), 1, &stat, top.desc,
-                               traffic_desc, packet_len, dst_in_chs,
-                               dst_out_chs, input_buf_size);
+        src_nodes.emplace_back(std::make_unique<Router>(
+            &eventq, src_id(id), 1, &stat, top.desc, traffic_desc, packet_len,
+            src_in_chs, src_out_chs, input_buf_size));
+        dst_nodes.emplace_back(std::make_unique<Router>(
+            &eventq, dst_id(id), 1, &stat, top.desc, traffic_desc, packet_len,
+            dst_in_chs, dst_out_chs, input_buf_size));
 
         arrfree(src_in_chs);
         arrfree(src_out_chs);
@@ -94,9 +94,9 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
             arrput(in_chs, in_ch);
         }
 
-        routers.emplace_back(&eventq, rtr_id(id), radix, &stat, top.desc,
-                             traffic_desc, packet_len, in_chs, out_chs,
-                             input_buf_size);
+        routers.emplace_back(std::make_unique<Router>(
+            &eventq, rtr_id(id), radix, &stat, top.desc, traffic_desc,
+            packet_len, in_chs, out_chs, input_buf_size));
 
         arrfree(in_chs);
         arrfree(out_chs);
@@ -135,7 +135,7 @@ int sim_debug_step(Sim *sim)
         return 1;
     } else if (!strcmp(line, "p")) {
         for (size_t i = 0; i < sim->routers.size(); i++) {
-            router_print_state(&sim->routers[i]);
+            router_print_state(sim->routers[i].get());
         }
         return 1;
     }
@@ -184,13 +184,13 @@ void sim_report(Sim *sim) {
     printf("\n");
 
     for (size_t i = 0; i < sim->src_nodes.size(); i++) {
-        Router *src = &sim->src_nodes[i];
+        Router *src = sim->src_nodes[i].get();
         printf("[%s] ", id_str(src->id, s));
         printf("# of flits generated: %ld\n", src->flit_depart_count);
     }
 
     for (size_t i = 0; i < sim->dst_nodes.size(); i++) {
-        Router *dst = &sim->dst_nodes[i];
+        Router *dst = sim->dst_nodes[i].get();
         printf("[%s] ", id_str(dst->id, s));
         printf("# of flits arrived: %ld\n", dst->flit_arrive_count);
     }
@@ -200,11 +200,11 @@ void sim_report(Sim *sim) {
 void sim_process(Sim *sim, Event e)
 {
     if (is_src(e.id)) {
-        e.f(&sim->src_nodes[e.id.value]);
+        e.f(sim->src_nodes[e.id.value].get());
     } else if (is_dst(e.id)) {
-        e.f(&sim->dst_nodes[e.id.value]);
+        e.f(sim->dst_nodes[e.id.value].get());
     } else if (is_rtr(e.id)) {
-        e.f(&sim->routers[e.id.value]);
+        e.f(sim->routers[e.id.value].get());
     } else {
         assert(0);
     }
@@ -216,13 +216,6 @@ void sim_destroy(Sim *sim)
     for (long i = 0; i < arrlen(sim->channels); i++)
         channel_destroy(&sim->channels[i]);
     arrfree(sim->channels);
-
-    for (size_t i = 0; i < sim->routers.size(); i++)
-        router_destroy(&sim->routers[i]);
-    for (size_t i = 0; i < sim->src_nodes.size(); i++)
-        router_destroy(&sim->src_nodes[i]);
-    for (size_t i = 0; i < sim->dst_nodes.size(); i++)
-        router_destroy(&sim->dst_nodes[i]);
 
     // Stat
     hmfree(sim->stat.packet_timestamp_map);
