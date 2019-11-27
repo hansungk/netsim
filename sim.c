@@ -33,6 +33,11 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
         hmput(sim->channel_map, ch->conn.uniq, ch);
     }
 
+    TrafficDesc trd = {0};
+    arrsetlen(trd.dests, 16);
+    int dests[] = {0, 10, 10, 0};
+    memcpy(trd.dests, dests, sizeof(dests));
+
     // Initialize terminal nodes
     sim->src_nodes = NULL;
     sim->dst_nodes = NULL;
@@ -60,12 +65,14 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
         arrput(src_out_chs, src_out_ch);
         arrput(dst_in_chs, dst_in_ch);
 
-        Router src_node = router_create(
-            &sim->eventq, src_id(id), 1, sim->flit_allocator, &sim->stat, top.desc,
-            sim->packet_len, src_in_chs, src_out_chs, input_buf_size);
-        Router dst_node = router_create(
-            &sim->eventq, dst_id(id), 1, sim->flit_allocator, &sim->stat, top.desc,
-            sim->packet_len, dst_in_chs, dst_out_chs, input_buf_size);
+        Router src_node =
+            router_create(&sim->eventq, src_id(id), 1, sim->flit_allocator,
+                          &sim->stat, top.desc, trd, sim->packet_len,
+                          src_in_chs, src_out_chs, input_buf_size);
+        Router dst_node =
+            router_create(&sim->eventq, dst_id(id), 1, sim->flit_allocator,
+                          &sim->stat, top.desc, trd, sim->packet_len,
+                          dst_in_chs, dst_out_chs, input_buf_size);
         arrput(sim->src_nodes, src_node);
         arrput(sim->dst_nodes, dst_node);
 
@@ -99,10 +106,10 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
             arrput(in_chs, in_ch);
         }
 
-        arrput(sim->routers,
-               router_create(&sim->eventq, rtr_id(id), radix,
-                             sim->flit_allocator, &sim->stat, top.desc,
-                             sim->packet_len, in_chs, out_chs, input_buf_size));
+        Router rtr_node = router_create(
+            &sim->eventq, rtr_id(id), radix, sim->flit_allocator, &sim->stat,
+            top.desc, trd, sim->packet_len, in_chs, out_chs, input_buf_size);
+        arrput(sim->routers, rtr_node);
 
         arrfree(in_chs);
         arrfree(out_chs);

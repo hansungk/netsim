@@ -6,8 +6,8 @@
 
 * TODO
 - Infinite source queue and accurate terminal instrumentation
-- Topology for 2-D torus
-- Routing for 2-D torus
+- Latency vs. offerred traffic curve
+  - For torus: Figure 23.4
 - Wormhole -> VC flow control
 - Deadlock avoidance
   - Dedicated/free VCs

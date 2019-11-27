@@ -1,7 +1,6 @@
 #include "sim.h"
 #include "router.h"
 #include "queue.h"
-#include <yaml.h>
 
 int main(int argc, char **argv) {
     int debug = 0;

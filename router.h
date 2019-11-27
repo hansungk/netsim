@@ -85,6 +85,16 @@ void topology_destroy(Topology *top);
 Connection conn_find_forward(Topology *t, RouterPortPair out_port);
 Connection conn_find_reverse(Topology *t, RouterPortPair in_port);
 
+enum TrafficType {
+    TRF_UNIFORM_RANDOM,
+    TRF_DESIGNATED,
+};
+
+typedef struct TrafficDesc {
+    enum TrafficType type; // traffic type
+    int *dests;            // destination table
+} TrafficDesc;
+
 enum FlitType {
     FLIT_HEAD,
     FLIT_BODY,
@@ -193,6 +203,7 @@ typedef struct Router {
     Alloc *flit_allocator;
     Stat *stat;
     TopoDesc top_desc;
+    TrafficDesc traffic_desc;
     long last_tick;            // prevents double-tick in a cycle (initially -1)
     long flit_payload_counter; // for simple payload generation
     long flitnum;              // n-th flit counter of a packet
@@ -209,7 +220,7 @@ typedef struct Router {
 } Router;
 
 Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
-                     TopoDesc td, long packet_len, Channel **in_chs,
+                     TopoDesc td, TrafficDesc trd, long packet_len, Channel **in_chs,
                      Channel **out_chs, long input_buf_size);
 void router_print_state(Router *r);
 void router_destroy(Router *r);

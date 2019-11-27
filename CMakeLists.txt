@@ -24,7 +24,7 @@ elseif (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     target_compile_options(netsim PRIVATE -fdiagnostics-color)
 endif()
 
-target_link_libraries(netsim PRIVATE yaml)
+# target_link_libraries(netsim PRIVATE yaml)
 
 # Comment this out to disable AddressSanitizer.
 target_compile_options(netsim PRIVATE -fsanitize=address,leak,undefined)

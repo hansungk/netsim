@@ -201,9 +201,10 @@ static void outputunit_destroy(OutputUnit *ou)
 }
 
 Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
-                     TopoDesc td, long packet_len, Channel **in_chs,
+                     TopoDesc td, TrafficDesc trd, long packet_len, Channel **in_chs,
                      Channel **out_chs, long input_buf_size)
 {
+    // Copy channel list
     Channel **input_channels = NULL;
     Channel **output_channels = NULL;
     for (long i = 0; i < arrlen(in_chs); i++)
@@ -244,6 +245,7 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
         .flit_allocator = fa,
         .stat = st,
         .top_desc = td,
+        .traffic_desc = trd,
         .last_tick = -1,
         .packet_len = packet_len,
         .input_channels = input_channels,
@@ -394,12 +396,16 @@ void router_tick(Router *r)
 
 void source_generate(Router *r)
 {
+    OutputUnit *ou = &r->output_units[0];
+
+    // Before the source queue.
     if (!queue_full(r->source_queue)) {
         // TODO: Proper traffic pattern.
         // Flit *flit = flit_create(FLIT_BODY, r->id.value, (r->id.value + 2) %
         // 4,
         //                          r->flit_payload_counter);
-        Flit *flit = flit_create(FLIT_BODY, r->id.value, 10,
+        int dest = r->traffic_desc.dests[r->id.value];
+        Flit *flit = flit_create(FLIT_BODY, r->id.value, dest,
                                  r->flit_payload_counter, r->flitnum);
         r->flit_payload_counter++;
         if (r->flitnum == 0) {
@@ -430,10 +436,11 @@ void source_generate(Router *r)
         char s[IDSTRLEN];
         debugf(r, "Flit generated: %s\n", flit_str(flit, s));
         debugf(r, "Source queue len=%ld\n", queue_len(r->source_queue));
+    } else {
+        debugf(r, "WARN: source queue full!\n");
     }
 
-    assert(r->radix == 1);
-    OutputUnit *ou = &r->output_units[0];
+    // After the source queue.
     if (!queue_empty(r->source_queue) && ou->credit_count > 0) {
         Flit *ready_flit = queue_front(r->source_queue);
         queue_pop(r->source_queue);
@@ -455,7 +462,6 @@ void source_generate(Router *r)
         r->reschedule_next_tick = 1;
     } else {
         debugf(r, "Credit stall!\n");
-        return;
     }
 }
 

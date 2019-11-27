@@ -18,6 +18,7 @@ typedef struct Sim {
     Stat stat;
     int debug_mode;
     Topology topology;
+    TrafficDesc traffic_desc;
     long input_buf_size; // router input buffer size
     long channel_delay;
     long packet_len;    // length of a packet in flits
