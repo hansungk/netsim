@@ -8,7 +8,6 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
               int router_count, int radix, long input_buf_size)
 {
     memset(sim, 0, sizeof(Sim));
-    sim->flit_allocator = alloc_create(sizeof(Flit));
     sim->debug_mode = debug_mode;
     sim->topology = top;
     sim->channel_delay = 1; /* FIXME hardcoded */
@@ -33,7 +32,8 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
         hmput(sim->channel_map, ch->conn.uniq, ch);
     }
 
-    TrafficDesc trd = {0};
+    TrafficDesc trd;
+    memset(&trd, 0, sizeof(TrafficDesc));
     arrsetlen(trd.dests, 16);
     int dests[] = {0, 10, 10, 0};
     memcpy(trd.dests, dests, sizeof(dests));
@@ -65,14 +65,12 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
         arrput(src_out_chs, src_out_ch);
         arrput(dst_in_chs, dst_in_ch);
 
-        Router src_node =
-            router_create(&sim->eventq, src_id(id), 1, sim->flit_allocator,
-                          &sim->stat, top.desc, trd, sim->packet_len,
-                          src_in_chs, src_out_chs, input_buf_size);
-        Router dst_node =
-            router_create(&sim->eventq, dst_id(id), 1, sim->flit_allocator,
-                          &sim->stat, top.desc, trd, sim->packet_len,
-                          dst_in_chs, dst_out_chs, input_buf_size);
+        Router src_node = router_create(
+            &sim->eventq, src_id(id), 1, &sim->stat, top.desc, trd,
+            sim->packet_len, src_in_chs, src_out_chs, input_buf_size);
+        Router dst_node = router_create(
+            &sim->eventq, dst_id(id), 1, &sim->stat, top.desc, trd,
+            sim->packet_len, dst_in_chs, dst_out_chs, input_buf_size);
         arrput(sim->src_nodes, src_node);
         arrput(sim->dst_nodes, dst_node);
 
@@ -107,8 +105,8 @@ void sim_init(Sim *sim, int debug_mode, Topology top, int terminal_count,
         }
 
         Router rtr_node = router_create(
-            &sim->eventq, rtr_id(id), radix, sim->flit_allocator, &sim->stat,
-            top.desc, trd, sim->packet_len, in_chs, out_chs, input_buf_size);
+            &sim->eventq, rtr_id(id), radix, &sim->stat, top.desc, trd,
+            sim->packet_len, in_chs, out_chs, input_buf_size);
         arrput(sim->routers, rtr_node);
 
         arrfree(in_chs);
@@ -226,7 +224,6 @@ void sim_process(Sim *sim, Event e)
 void sim_destroy(Sim *sim)
 {
     hmfree(sim->channel_map);
-    alloc_destroy(sim->flit_allocator);
     for (long i = 0; i < arrlen(sim->channels); i++)
         channel_destroy(&sim->channels[i]);
     arrfree(sim->channels);

@@ -2,7 +2,6 @@
 #define ROUTER_H
 
 #include "event.h"
-#include "mem.h"
 #include "stb_ds.h"
 
 // Port that is always connected to a terminal.
@@ -200,7 +199,6 @@ typedef struct Router {
     long flit_arrive_count; // # of flits arrived for the destination node
     long flit_depart_count; // # of flits departed for the destination node
     EventQueue *eventq;     // reference to the simulator-global event queue
-    Alloc *flit_allocator;
     Stat *stat;
     TopoDesc top_desc;
     TrafficDesc traffic_desc;
@@ -219,8 +217,8 @@ typedef struct Router {
     int sa_last_grant_input;   // for round-robin arbitration
 } Router;
 
-Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
-                     TopoDesc td, TrafficDesc trd, long packet_len, Channel **in_chs,
+Router router_create(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
+                     TrafficDesc trd, long packet_len, Channel **in_chs,
                      Channel **out_chs, long input_buf_size);
 void router_print_state(Router *r);
 void router_destroy(Router *r);

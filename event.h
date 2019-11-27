@@ -2,7 +2,9 @@
 #define EVENT_H
 
 #include "stdio.h"
+extern "C" {
 #include "pqueue.h"
+}
 
 #define IDSTRLEN 20
 

@@ -3,7 +3,6 @@
 
 #include "event.h"
 #include "router.h"
-#include "mem.h"
 
 void fatal(const char *fmt, ...);
 
@@ -14,7 +13,6 @@ typedef struct ChannelMap {
 
 typedef struct Sim {
     EventQueue eventq; // global event queue
-    Alloc *flit_allocator;
     Stat stat;
     int debug_mode;
     Topology topology;

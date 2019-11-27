@@ -1,9 +1,10 @@
 cmake_minimum_required (VERSION 3.8)
 
-project (netsim LANGUAGES C)
+project (netsim LANGUAGES CXX C)
 
-add_executable (netsim main.c sim.c router.c topology.c event.c queue.c mem.c pqueue.c)
-target_compile_features(netsim PUBLIC c_std_99)
+add_executable (netsim main.cpp sim.cpp router.cpp topology.cpp event.cpp
+    queue.cpp pqueue.c)
+target_compile_features(netsim PUBLIC cxx_std_14)
 
 set(default_build_type "Debug")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)

@@ -30,7 +30,9 @@ int torus_set_id_xyz(int id, int k, int direction)
 
 Topology topology_create(void)
 {
-    return (Topology){0};
+    Topology top;
+    memset(&top, 0, sizeof(Topology));
+    return top;
 }
 
 void topology_destroy(Topology *top)

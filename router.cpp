@@ -1,5 +1,6 @@
 #include "router.h"
 #include "queue.h"
+#define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -200,10 +201,22 @@ static void outputunit_destroy(OutputUnit *ou)
     queue_free(ou->buf_credit);
 }
 
-Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
+Router router_create(EventQueue *eq, Id id, int radix, Stat *st,
                      TopoDesc td, TrafficDesc trd, long packet_len, Channel **in_chs,
                      Channel **out_chs, long input_buf_size)
 {
+    Router router;
+    memset(&router, 0, sizeof(Router));
+    router.id = id;
+    router.radix = radix;
+    router.eventq = eq;
+    router.stat = st;
+    router.top_desc = td;
+    router.traffic_desc = trd;
+    router.last_tick = -1;
+    router.packet_len = packet_len;
+    router.input_buf_size = input_buf_size;
+
     // Copy channel list
     Channel **input_channels = NULL;
     Channel **output_channels = NULL;
@@ -211,6 +224,8 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
         arrput(input_channels, in_chs[i]);
     for (long i = 0; i < arrlen(out_chs); i++)
         arrput(output_channels, out_chs[i]);
+    router.input_channels = input_channels;
+    router.output_channels = output_channels;
 
     // Source queues are supposed to be infinite in size, but since our
     // queue implementation does not support dynamic extension, let's just
@@ -219,6 +234,7 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
     if (is_src(id)) {
         queue_init(source_queue, 10000);
     }
+    router.source_queue = source_queue;
 
     InputUnit *input_units = NULL;
     OutputUnit *output_units = NULL;
@@ -237,24 +253,10 @@ Router router_create(EventQueue *eq, Id id, int radix, Alloc *fa, Stat *st,
         input_units[0].route_port = TERMINAL_PORT;
         output_units[0].input_port = TERMINAL_PORT;
     }
+    router.input_units = input_units;
+    router.output_units = output_units;
 
-    return (Router){
-        .id = id,
-        .radix = radix,
-        .eventq = eq,
-        .flit_allocator = fa,
-        .stat = st,
-        .top_desc = td,
-        .traffic_desc = trd,
-        .last_tick = -1,
-        .packet_len = packet_len,
-        .input_channels = input_channels,
-        .output_channels = output_channels,
-        .source_queue = source_queue,
-        .input_units = input_units,
-        .output_units = output_units,
-        .input_buf_size = input_buf_size,
-    };
+    return router;
 }
 
 void router_destroy(Router *r)
