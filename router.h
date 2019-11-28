@@ -174,7 +174,7 @@ char *globalstate_str(enum GlobalState state, char *s);
 
 // credit_count is omitted in the input unit; it can be found in the output unit
 // instead.
-typedef struct InputUnit {
+struct InputUnit {
     enum GlobalState global;
     enum GlobalState next_global;
     int route_port;
@@ -182,22 +182,22 @@ typedef struct InputUnit {
     enum PipelineStage stage;
     Flit **buf;
     Flit *st_ready;
-} InputUnit;
+};
 
-typedef struct OutputUnit {
+struct OutputUnit {
     enum GlobalState global;
     enum GlobalState next_global;
     int input_port;
     int input_vc;
     int credit_count;
     Credit *buf_credit;
-} OutputUnit;
+};
 
 Event tick_event_from_id(Id id);
 
 /// A router. It can represent any of a switch node, a source node and a
 /// destination node.
-typedef struct Router {
+struct Router {
     Router(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
            TrafficDesc trd, long packet_len, Channel **in_chs,
            Channel **out_chs, long input_buf_size);
@@ -212,11 +212,17 @@ typedef struct Router {
     TopoDesc top_desc;
     TrafficDesc traffic_desc;
     long last_tick = -1;            // prevents double-tick in a cycle
-    long flit_payload_counter = 0; // for simple payload generation
-    long flitnum = 0;          // n-th flit counter of a packet
     long packet_len;           // length of a packet in flits
-    long reschedule_next_tick =
-        -1;                    // marks whether to self-tick at the next cycle
+    bool reschedule_next_tick =
+        false; // marks whether to self-tick at the next cycle
+
+    struct SourceGenInfo {
+        bool packet_finished = true;
+        long next_packet_start = 0;
+        long flit_payload_counter = 0; // for simple payload generation
+        long flitnum = 0;              // n-th flit counter of a packet
+    } sg_info;
+
     Channel **input_channels;  // accessor to the input channels
     Channel **output_channels; // accessor to the output channels
     long input_buf_size;       // max size of each input flit queue
@@ -225,7 +231,7 @@ typedef struct Router {
     OutputUnit *output_units;  // output units
     int va_last_grant_input = 0;   // for round-robin arbitration
     int sa_last_grant_input = 0;   // for round-robin arbitration
-} Router;
+};
 
 void router_print_state(Router *r);
 

@@ -45,10 +45,12 @@ typedef struct TimedEvent {
     size_t pos; // used for libpqueue
 } TimedEvent;
 
-typedef struct EventQueue {
+struct EventQueue {
+    long curr_time() const { return time_; }
+
     long time_;
     pqueue_t *pq;
-} EventQueue;
+};
 
 void eventq_init(EventQueue *eq);
 void eventq_destroy(EventQueue *eq);

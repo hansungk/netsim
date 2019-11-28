@@ -326,7 +326,7 @@ void router_tick(Router *r)
         return;
     }
 
-    r->reschedule_next_tick = 0;
+    r->reschedule_next_tick = false;
 
     // Different tick actions for different types of node.
     if (is_src(r->id)) {
@@ -384,20 +384,36 @@ void source_generate(Router *r)
     OutputUnit *ou = &r->output_units[0];
 
     // Before the source queue.
-    if (!queue_full(r->source_queue)) {
+    if (!queue_full(r->source_queue) &&
+        (r->eventq->curr_time() >= r->sg_info.next_packet_start ||
+         !r->sg_info.packet_finished)) {
         // TODO: Proper traffic pattern.
-        // Flit *flit = flit_create(FLIT_BODY, r->id.value, (r->id.value + 2) %
-        // 4,
-        //                          r->flit_payload_counter);
         int dest = r->traffic_desc.dests[r->id.value];
-        Flit *flit = flit_create(FLIT_BODY, r->id.value, dest,
-                                 r->flit_payload_counter, r->flitnum);
-        r->flit_payload_counter++;
-        if (r->flitnum == 0) {
+        Flit *flit =
+            flit_create(FLIT_BODY, r->id.value, dest,
+                        r->sg_info.flit_payload_counter, r->sg_info.flitnum);
+
+        if (r->sg_info.packet_finished) {
+            if (r->eventq->curr_time() != r->sg_info.next_packet_start) {
+                debugf(r,
+                       "WARN: Head flit not generated at the scheduled "
+                       "time=%ld!\n",
+                       r->sg_info.next_packet_start);
+            }
+
+            // Head flit
+            r->sg_info.flit_payload_counter++;
+
             flit->type = FLIT_HEAD;
             flit->route_info.path = source_route_compute(
                 r->top_desc, flit->route_info.src, flit->route_info.dst);
-            r->flitnum++;
+            r->sg_info.flitnum++;
+
+            // Set the time the next packet is generated.
+            r->sg_info.next_packet_start =
+                r->eventq->curr_time() + 2 * r->packet_len + 4;
+            schedule(r->eventq, r->sg_info.next_packet_start,
+                     tick_event_from_id(r->id));
 
             debugf(r, "Source route computation: %d -> %d : {",
                    flit->route_info.src, flit->route_info.dst);
@@ -405,17 +421,26 @@ void source_generate(Router *r)
                 printf("%d,", flit->route_info.path[i]);
             }
             printf("}\n");
-        } else if (r->flitnum == PACKET_SIZE - 1) {
+
+            r->sg_info.packet_finished = false;
+        } else if (r->sg_info.flitnum == PACKET_SIZE - 1) {
+            // Tail flit
             flit->type = FLIT_TAIL;
-            r->flitnum = 0;
+            r->sg_info.flitnum = 0;
+            r->sg_info.packet_finished = true;
         } else {
-            r->flitnum++;
+            // Body flit
+            r->sg_info.flitnum++;
+        }
+
+        if (!r->sg_info.packet_finished) {
+            r->reschedule_next_tick = true;
         }
 
         queue_put(r->source_queue, flit);
 
         // Record packet generation time.
-        PacketTimestamp ts = {.gen = curr_time(r->eventq), .arr = -1};
+        PacketTimestamp ts = {.gen = r->eventq->curr_time(), .arr = -1};
         hmput(r->stat->packet_timestamp_map, flit->payload, ts);
 
         char s[IDSTRLEN];
@@ -444,7 +469,7 @@ void source_generate(Router *r)
 
         // Infinitely generate flits.
         // TODO: Set and control generation rate.
-        r->reschedule_next_tick = 1;
+        // r->reschedule_next_tick = 1;
     } else {
         debugf(r, "Credit stall!\n");
     }
@@ -481,7 +506,7 @@ void destination_consume(Router *r)
                src_pair.port);
 
         // Self-tick autonomously unless all input ports are empty.
-        r->reschedule_next_tick = 1;
+        r->reschedule_next_tick = true;
 
         flit_destroy(flit);
     }
@@ -512,7 +537,7 @@ void fetch_flit(Router *r)
                 iu->stage = PIPELINE_RC;
             }
 
-            r->reschedule_next_tick = 1;
+            r->reschedule_next_tick = true;
         }
 
         assert(!queue_full(iu->buf));
@@ -535,7 +560,7 @@ void fetch_credit(Router *r)
             // In any time, there should be at most 1 credit in the buffer.
             assert(queue_empty(ou->buf_credit));
             queue_put(ou->buf_credit, c);
-            r->reschedule_next_tick = 1;
+            r->reschedule_next_tick = true;
         }
     }
 }
@@ -565,7 +590,7 @@ void credit_update(Router *r)
                     iu->next_global = STATE_ACTIVE;
                     ou->next_global = STATE_ACTIVE;
                 }
-                r->reschedule_next_tick = 1;
+                r->reschedule_next_tick = true;
                 // debugf(r, "credit update with kickstart! (iport=%d)\n",
                 //         ou->input_port);
             } else {
@@ -604,7 +629,7 @@ void route_compute(Router *r)
             // RC -> VA transition
             iu->next_global = STATE_VCWAIT;
             iu->stage = PIPELINE_VA;
-            r->reschedule_next_tick = 1;
+            r->reschedule_next_tick = true;
         }
     }
 }
@@ -703,7 +728,7 @@ void vc_alloc(Router *r)
                 ou->input_port = iport;
 
                 iu->stage = PIPELINE_SA;
-                r->reschedule_next_tick = 1;
+                r->reschedule_next_tick = true;
             }
         }
     }
@@ -766,7 +791,7 @@ void switch_alloc(Router *r)
                         iu->stage = PIPELINE_RC;
                         // debugf(this, "SA: next state is Routing\n");
                     }
-                    r->reschedule_next_tick = 1;
+                    r->reschedule_next_tick = true;
                 } else if (ou->credit_count == 0) {
                     // debugf(r, "SA: switching to CW\n");
                     iu->next_global = STATE_CREDWAIT;
@@ -776,7 +801,7 @@ void switch_alloc(Router *r)
                     iu->next_global = STATE_ACTIVE;
                     iu->stage = PIPELINE_SA;
                     // debugf(this, "SA: next state is Active\n");
-                    r->reschedule_next_tick = 1;
+                    r->reschedule_next_tick = true;
                 }
                 assert(ou->credit_count >= 0);
             }
@@ -835,7 +860,7 @@ void update_states(Router *r)
         }
     }
     // Reschedule whenever there is one or more state change.
-    if (changed) r->reschedule_next_tick = 1;
+    if (changed) r->reschedule_next_tick = true;
 }
 
 void router_print_state(Router *r)
