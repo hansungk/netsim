@@ -13,8 +13,6 @@
 #define NORMALLEN 10
 // Excess storage in channel to prevent overrun.
 #define CHANNEL_SLACK 4
-// Packet size in number of flits.
-#define PACKET_SIZE 4
 
 // ID of the source node is encoded into PacketId.
 struct PacketId {
@@ -216,12 +214,14 @@ struct RandomGenerator {
 
 /// A router. It can represent any of a switch node, a source node and a
 /// destination node.
+struct Sim;
 struct Router {
-    Router(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
+    Router(Sim &sim, EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
            TrafficDesc trd, RandomGenerator &rg, long packet_len, Channel **in_chs,
            Channel **out_chs, long input_buf_size);
     ~Router();
 
+    Sim &sim;                   // FIXME: not pretty
     Id id;                      // router ID
     int radix;                  // radix
     long flit_arrive_count = 0; // # of flits arrived for the destination node

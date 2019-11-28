@@ -63,10 +63,10 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
         arrput(src_out_chs, src_out_ch);
         arrput(dst_in_chs, dst_in_ch);
 
-        src_nodes.push_back(std::make_unique<Router>(
+        src_nodes.push_back(std::make_unique<Router>(*this,
             &eventq, src_id(id), 1, &stat, top.desc, traffic_desc, rand_gen,
             packet_len, src_in_chs, src_out_chs, input_buf_size));
-        dst_nodes.push_back(std::make_unique<Router>(
+        dst_nodes.push_back(std::make_unique<Router>(*this,
             &eventq, dst_id(id), 1, &stat, top.desc, traffic_desc, rand_gen,
             packet_len, dst_in_chs, dst_out_chs, input_buf_size));
 
@@ -98,7 +98,7 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
             arrput(in_chs, in_ch);
         }
 
-        routers.push_back(std::make_unique<Router>(
+        routers.push_back(std::make_unique<Router>(*this,
             &eventq, rtr_id(id), radix, &stat, top.desc, traffic_desc, rand_gen,
             packet_len, in_chs, out_chs, input_buf_size));
 

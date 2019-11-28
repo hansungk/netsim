@@ -1,4 +1,5 @@
 #include "router.h"
+#include "sim.h"
 #include "queue.h"
 #include "stb_ds.h"
 #include <stdarg.h>
@@ -204,10 +205,11 @@ static void outputunit_destroy(OutputUnit *ou)
     queue_free(ou->buf_credit);
 }
 
-Router::Router(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
-               TrafficDesc trd, RandomGenerator &rg, long packet_len,
-               Channel **in_chs, Channel **out_chs, long input_buf_size)
-    : id(id), radix(radix), eventq(eq), stat(st), top_desc(td),
+Router::Router(Sim &sim, EventQueue *eq, Id id, int radix, Stat *st,
+               TopoDesc td, TrafficDesc trd, RandomGenerator &rg,
+               long packet_len, Channel **in_chs, Channel **out_chs,
+               long input_buf_size)
+    : sim(sim), id(id), radix(radix), eventq(eq), stat(st), top_desc(td),
       traffic_desc(trd), rand_gen(rg), packet_len(packet_len),
       input_buf_size(input_buf_size)
 {
@@ -270,8 +272,7 @@ void router_reschedule(Router *r)
 // Expects that src_id and dst_id is on the same ring.
 // Appends computed route after 'path'. Does NOT put the final routing to the
 // terminal node.
-static void source_route_compute_dimension(TopoDesc td,
-                                           RandomGenerator &rg,
+static void source_route_compute_dimension(Router *r, TopoDesc td,
                                            int src_id, int dst_id,
                                            int direction,
                                            std::vector<int> &path)
@@ -282,8 +283,26 @@ static void source_route_compute_dimension(TopoDesc td,
     int cw_dist = (dst_id_xyz - src_id_xyz + total) % total;
 
     if ((total % 2) == 0 && cw_dist == (total / 2)) {
-        int dice = rg.uni_dist(rg.def);
+        int dice = r->rand_gen.uni_dist(r->rand_gen.def);
         int to_larger = (dice % 2 == 0) ? 1 : 0;
+
+        // Adaptive routing
+
+        // int first_hop_id = r->output_channels[TERMINAL_PORT]->conn.dst.id.value;
+        // Router *first_hop = r->sim.routers[first_hop_id].get();
+        // int credit_for_larger =
+        //     first_hop->output_units[get_output_port(direction, 1)].credit_count;
+        // int credit_for_smaller =
+        //     first_hop->output_units[get_output_port(direction, 0)].credit_count;
+        // // printf("credit_for_larger=%d, smaller=%d\n", credit_for_larger,
+        // //        credit_for_smaller);
+
+        // to_larger = 1;
+        // if (credit_for_smaller > credit_for_larger) {
+        //     to_larger = 0;
+        // }
+        // printf("adaptive routed to %d\n", get_output_port(direction, to_larger));
+
         for (int i = 0; i < cw_dist; i++) {
             path.push_back(get_output_port(direction, to_larger));
         }
@@ -303,7 +322,7 @@ static void source_route_compute_dimension(TopoDesc td,
 
 // Source-side all-in-one route computation.
 // Returns an stb array containing the series of routed output ports.
-std::vector<int> source_route_compute(TopoDesc td, RandomGenerator &rg, int src_id, int dst_id)
+std::vector<int> source_route_compute(Router *r, TopoDesc td, int src_id, int dst_id)
 {
     std::vector<int> path{};
 
@@ -312,7 +331,7 @@ std::vector<int> source_route_compute(TopoDesc td, RandomGenerator &rg, int src_
     for (int dir = 0; dir < td.r; dir++) {
         int interim_id = torus_align_id(td.k, last_src_id, dst_id, dir);
         // printf("%s: from %d to %d\n", __func__, last_src_id, interim_id);
-        source_route_compute_dimension(td, rg, last_src_id, interim_id, dir, path);
+        source_route_compute_dimension(r, td, last_src_id, interim_id, dir, path);
         last_src_id = interim_id;
     }
     // Enter the final destination node.
@@ -429,12 +448,12 @@ void source_generate(Router *r)
 
             flit->type = FLIT_HEAD;
             flit->route_info.path = source_route_compute(
-                r->top_desc, r->rand_gen, flit->route_info.src, flit->route_info.dst);
+                r, r->top_desc, flit->route_info.src, flit->route_info.dst);
             assert(flit->route_info.path.size() > 0);
             r->sg.flitnum++;
 
             // Set the time the next packet is generated.
-            r->sg.next_packet_start = r->eventq->curr_time() + 7;
+            r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len + 2;
             schedule(r->eventq, r->sg.next_packet_start,
                      tick_event_from_id(r->id));
 
@@ -451,7 +470,7 @@ void source_generate(Router *r)
             printf("}\n");
 
             r->sg.packet_finished = false;
-        } else if (r->sg.flitnum == PACKET_SIZE - 1) {
+        } else if (r->sg.flitnum == r->packet_len - 1) {
             // Tail flit
             flit->type = FLIT_TAIL;
             r->sg.flitnum = 0;
