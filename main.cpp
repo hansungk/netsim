@@ -9,10 +9,10 @@ int main(int argc, char **argv) {
             debug = 1;
     }
 
-    Topology top = topology_torus(4, 2);
+    Topology top = topology_torus(4, 1);
 
-    Sim sim{debug, top, 16, 16, 5, 10};
-    for (int i = 0; i < 16; i++) {
+    Sim sim{debug, top, 4, 4, 3, 10};
+    for (int i = 0; i < 4; i++) {
         schedule(&sim.eventq, 0, tick_event_from_id(src_id(i)));
     }
 

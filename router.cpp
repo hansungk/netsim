@@ -41,7 +41,7 @@ Channel channel_create(EventQueue *eq, long dl, const Connection conn)
     ch.buf = NULL;
     ch.buf_credit = NULL;
     queue_init(ch.buf, dl + CHANNEL_SLACK);
-    queue_init(ch.buf_credit, CHANNEL_SLACK);
+    queue_init(ch.buf_credit, dl + CHANNEL_SLACK);
     return ch;
 }
 
@@ -284,7 +284,6 @@ static void source_route_compute_dimension(TopoDesc td,
     if ((total % 2) == 0 && cw_dist == (total / 2)) {
         int dice = rg.uni_dist(rg.def);
         int to_larger = (dice % 2 == 0) ? 1 : 0;
-        to_larger = 1;
         for (int i = 0; i < cw_dist; i++) {
             path.push_back(get_output_port(direction, to_larger));
         }
