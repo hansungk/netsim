@@ -209,7 +209,7 @@ Event tick_event_from_id(Id id);
 struct RandomGenerator {
     RandomGenerator(int terminal_count);
 
-    std::default_random_engine gen;
+    std::default_random_engine def;
     std::random_device rd;
     std::uniform_int_distribution<int> uni_dist;
 };

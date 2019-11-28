@@ -12,7 +12,7 @@ TrafficDesc::TrafficDesc(int terminal_count)
 }
 
 RandomGenerator::RandomGenerator(int terminal_count)
-    : gen(), rd(), uni_dist(0, terminal_count - 1)
+    : def(), rd(), uni_dist(0, terminal_count - 1)
 {
     // TODO: seed?
 }
@@ -282,11 +282,11 @@ static void source_route_compute_dimension(TopoDesc td,
     int cw_dist = (dst_id_xyz - src_id_xyz + total) % total;
 
     if ((total % 2) == 0 && cw_dist == (total / 2)) {
-        int dice = rg.uni_dist(rg.gen);
-        if ((dice % 2) == 0) {
-            path.push_back(get_output_port(direction, 1));
-        } else {
-            path.push_back(get_output_port(direction, 0));
+        int dice = rg.uni_dist(rg.def);
+        int to_larger = (dice % 2 == 0) ? 1 : 0;
+        to_larger = 1;
+        for (int i = 0; i < cw_dist; i++) {
+            path.push_back(get_output_port(direction, to_larger));
         }
     } else if (cw_dist <= (total / 2)) {
         // Clockwise
@@ -306,7 +306,7 @@ static void source_route_compute_dimension(TopoDesc td,
 // Returns an stb array containing the series of routed output ports.
 std::vector<int> source_route_compute(TopoDesc td, RandomGenerator &rg, int src_id, int dst_id)
 {
-    std::vector<int> path;
+    std::vector<int> path{};
 
     // Dimension-order routing. Order is XYZ.
     int last_src_id = src_id;
@@ -431,10 +431,11 @@ void source_generate(Router *r)
             flit->type = FLIT_HEAD;
             flit->route_info.path = source_route_compute(
                 r->top_desc, r->rand_gen, flit->route_info.src, flit->route_info.dst);
+            assert(flit->route_info.path.size() > 0);
             r->sg.flitnum++;
 
             // Set the time the next packet is generated.
-            r->sg.next_packet_start = r->eventq->curr_time() + 10;
+            r->sg.next_packet_start = r->eventq->curr_time() + 7;
             schedule(r->eventq, r->sg.next_packet_start,
                      tick_event_from_id(r->id));
 
@@ -508,6 +509,9 @@ void destination_consume(Router *r)
         Flit *flit = queue_front(iu->buf);
 
         if (flit->type == FLIT_HEAD) {
+            // First, check if this flit is correctly destined to this node.
+            assert(flit->route_info.dst == r->id.value);
+
             // Record packet arrival time.
             // debugf(r, "Finding packet ID=%ld,%ld\n", flit->packet_id.src,
             // flit->packet_id.id);
