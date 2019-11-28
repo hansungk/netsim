@@ -118,23 +118,16 @@ Connection conn_find_reverse(Topology *t, RouterPortPair in_port)
         return t->reverse_hash[idx].value;
 }
 
-Flit *flit_create(enum FlitType t, int src, int dst, PacketId pid, long flitnum)
+Flit::Flit(enum FlitType t, int src, int dst, PacketId pid, long flitnum)
+    : type(t), packet_id(pid), flitnum(flitnum)
 {
-    Flit *flit = (Flit *)malloc(sizeof(Flit));
-    RouteInfo ri = {src, dst, NULL, 0};
-    *flit = (Flit){
-        .type = t,
-        .route_info = ri,
-        .packet_id = pid,
-        .flitnum = flitnum,
-    };
-    return flit;
+    route_info.src = src;
+    route_info.dst = dst;
+    // route_info.path = std::vector<int>{0, 1, 2};
 }
 
 void flit_destroy(Flit *flit)
 {
-    if (flit->route_info.path)
-        arrfree(flit->route_info.path);
     free(flit);
 }
 
@@ -278,8 +271,10 @@ void router_reschedule(Router *r)
 // Expects that src_id and dst_id is on the same ring.
 // Appends computed route after 'path'. Does NOT put the final routing to the
 // terminal node.
-static int *source_route_compute_dimension(TopoDesc td, int src_id, int dst_id,
-                                           int direction, int *path)
+static std::vector<int> &source_route_compute_dimension(TopoDesc td, int src_id,
+                                                        int dst_id,
+                                                        int direction,
+                                                        std::vector<int> &path)
 {
     int total = td.k;
     int src_id_xyz = torus_id_xyz_get(src_id, td.k, direction);
@@ -289,13 +284,13 @@ static int *source_route_compute_dimension(TopoDesc td, int src_id, int dst_id,
     if (cw_dist <= total / 2) {
         // Clockwise
         for (int i = 0; i < cw_dist; i++) {
-            arrput(path, get_output_port(direction, 1));
+            path.push_back(get_output_port(direction, 1));
         }
     } else {
         // Counterclockwise
         // TODO: if CW == CCW, pick random
         for (int i = 0; i < total - cw_dist; i++) {
-            arrput(path, get_output_port(direction, 0));
+            path.push_back(get_output_port(direction, 0));
         }
     }
 
@@ -304,9 +299,9 @@ static int *source_route_compute_dimension(TopoDesc td, int src_id, int dst_id,
 
 // Source-side all-in-one route computation.
 // Returns an stb array containing the series of routed output ports.
-int *source_route_compute(TopoDesc td, int src_id, int dst_id)
+std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id)
 {
-    int *path = NULL;
+    std::vector<int> path;
 
     // Dimension-order routing. Order is XYZ.
     int last_src_id = src_id;
@@ -318,7 +313,7 @@ int *source_route_compute(TopoDesc td, int src_id, int dst_id)
         last_src_id = interim_id;
     }
     // Enter the final destination node.
-    arrput(path, TERMINAL_PORT);
+    path.push_back(TERMINAL_PORT);
 
     return path;
 }
@@ -406,9 +401,8 @@ void source_generate(Router *r)
 
         int dest = r->traffic_desc.dests[r->id.value];
         PacketId packet_id{r->id.value, r->sg.packet_counter};
-        Flit *flit =
-            flit_create(FLIT_BODY, r->id.value, dest,
-                        packet_id, r->sg.flitnum);
+        Flit *flit = new Flit{FLIT_BODY, r->id.value, dest,
+                        packet_id, r->sg.flitnum};
 
         if (r->sg.packet_finished) {
             if (r->eventq->curr_time() != r->sg.next_packet_start) {
@@ -428,7 +422,7 @@ void source_generate(Router *r)
 
             // Set the time the next packet is generated.
             r->sg.next_packet_start =
-                r->eventq->curr_time() + 10 * r->packet_len;
+                r->eventq->curr_time() + 1 * r->packet_len;
             schedule(r->eventq, r->sg.next_packet_start,
                      tick_event_from_id(r->id));
 
@@ -439,7 +433,7 @@ void source_generate(Router *r)
 
             debugf(r, "Source route computation: %d -> %d : {",
                    flit->route_info.src, flit->route_info.dst);
-            for (long i = 0; i < arrlen(flit->route_info.path); i++) {
+            for (size_t i = 0; i < flit->route_info.path.size(); i++) {
                 printf("%d,", flit->route_info.path[i]);
             }
             printf("}\n");
@@ -540,7 +534,7 @@ void destination_consume(Router *r)
         // Self-tick autonomously unless all input ports are empty.
         r->reschedule_next_tick = true;
 
-        flit_destroy(flit);
+        delete flit;
     }
 }
 
@@ -649,7 +643,7 @@ void route_compute(Router *r)
             Flit *flit = queue_front(iu->buf);
 
             assert(flit->type == FLIT_HEAD);
-            assert(flit->route_info.idx < arrlenu(flit->route_info.path));
+            assert(flit->route_info.idx < flit->route_info.path.size());
             iu->route_port = flit->route_info.path[flit->route_info.idx];
 
             char s[IDSTRLEN];

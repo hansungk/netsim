@@ -114,20 +114,21 @@ enum FlitType {
 typedef struct RouteInfo {
     int src;   // source node ID
     int dst;   // destination node ID
-    int *path; // series of output ports for this route
-    size_t idx;
+    std::vector<int> path; // series of output ports for this route
+    size_t idx = 0;
 } RouteInfo;
 
 /// Flit and credit encoding.
 /// Follows Fig. 16.13.
 struct Flit {
+    Flit(enum FlitType t, int src, int dst, PacketId pid, long flitnum);
+
     enum FlitType type;
     RouteInfo route_info;
     PacketId packet_id;
     long flitnum;
 };
 
-Flit *flit_create(enum FlitType t, int src, int dst, long p, long flitnum);
 char *flit_str(const Flit *flit, char *s);
 
 typedef struct Credit {
@@ -247,7 +248,7 @@ void router_tick(Router *r);
 void router_reschedule(Router *r);
 
 // Routing.
-int *source_route_compute(TopoDesc td, int src_id, int dst_id);
+std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id);
 
 // Pipeline stages.
 void source_generate(Router *r);

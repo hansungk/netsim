@@ -10,11 +10,11 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
       topology(top),
       traffic_desc(terminal_count)
 {
-    // traffic_desc = {TRF_DESIGNATED, std::vector<int>(16)};
-    // traffic_desc.dests[0] = 10;
-    // traffic_desc.dests[1] = 10;
-    // traffic_desc.dests[2] = 10;
-    // traffic_desc.dests[3] = 10;
+    traffic_desc = {TRF_DESIGNATED, std::vector<int>(16)};
+    traffic_desc.dests[0] = 10;
+    traffic_desc.dests[1] = 10;
+    traffic_desc.dests[2] = 10;
+    traffic_desc.dests[3] = 10;
     channel_delay = 1; /* FIXME hardcoded */
     packet_len = 4; /* FIXME hardcoded */
 
