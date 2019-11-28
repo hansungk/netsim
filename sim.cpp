@@ -5,7 +5,7 @@
 void print_conn(const char *name, Connection conn);
 
 Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
-         int radix, long input_buf_size)
+         int radix, int vc_count, long input_buf_size)
     : debug_mode(debug_mode),
       topology(top),
       traffic_desc(terminal_count),
@@ -64,10 +64,10 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
         arrput(dst_in_chs, dst_in_ch);
 
         src_nodes.push_back(std::make_unique<Router>(*this,
-            &eventq, src_id(id), 1, &stat, top.desc, traffic_desc, rand_gen,
+            &eventq, &stat, src_id(id), 1, vc_count, top.desc, traffic_desc, rand_gen,
             packet_len, src_in_chs, src_out_chs, input_buf_size));
         dst_nodes.push_back(std::make_unique<Router>(*this,
-            &eventq, dst_id(id), 1, &stat, top.desc, traffic_desc, rand_gen,
+            &eventq, &stat, dst_id(id), 1, vc_count, top.desc, traffic_desc, rand_gen,
             packet_len, dst_in_chs, dst_out_chs, input_buf_size));
 
         arrfree(src_in_chs);
@@ -99,7 +99,7 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
         }
 
         routers.push_back(std::make_unique<Router>(*this,
-            &eventq, rtr_id(id), radix, &stat, top.desc, traffic_desc, rand_gen,
+            &eventq, &stat, rtr_id(id), radix, vc_count, top.desc, traffic_desc, rand_gen,
             packet_len, in_chs, out_chs, input_buf_size));
 
         arrfree(in_chs);

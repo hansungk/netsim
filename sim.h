@@ -15,7 +15,7 @@ typedef struct ChannelMap {
 
 typedef struct Sim {
     Sim(int debug_mode, Topology top, int terminal_count,
-        int router_count, int radix, long input_buf_size);
+        int router_count, int radix, int vc_count, long input_buf_size);
 
     EventQueue eventq; // global event queue
     Stat stat;

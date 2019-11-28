@@ -9,6 +9,8 @@
 
 // Port that is always connected to a terminal.
 #define TERMINAL_PORT 0
+// Single VC used in the terminal-router channel.
+#define TERMINAL_VC 0
 // Maximum supported torus dimension.
 #define NORMALLEN 10
 // Excess storage in channel to prevent overrun.
@@ -184,28 +186,38 @@ char *globalstate_str(enum GlobalState state, char *s);
 // credit_count is omitted in the input unit; it can be found in the output unit
 // instead.
 struct InputUnit {
-    InputUnit(int bufsize);
-    ~InputUnit();
+    InputUnit(int vc_count, int bufsize);
 
-    enum GlobalState global = STATE_IDLE;
-    enum GlobalState next_global = STATE_IDLE;
-    int route_port = -1;
-    int output_vc = 0;
-    enum PipelineStage stage = PIPELINE_IDLE;
-    Flit **buf = NULL;
-    Flit *st_ready = NULL;
+    struct VC {
+        VC(int bufsize);
+        ~VC();
+
+        enum GlobalState global = STATE_IDLE;
+        enum GlobalState next_global = STATE_IDLE;
+        int route_port = -1;
+        int output_vc = 0;
+        enum PipelineStage stage = PIPELINE_IDLE;
+        Flit **buf = NULL;
+        Flit *st_ready = NULL;
+    };
+    std::vector<VC> vcs;
 };
 
 struct OutputUnit {
-    OutputUnit(int bufsize);
-    ~OutputUnit();
+    OutputUnit(int vc_count, int bufsize);
 
-    enum GlobalState global = STATE_IDLE;
-    enum GlobalState next_global = STATE_IDLE;
-    int input_port= -1;
-    int input_vc = 0;
-    int credit_count;
-    Credit *buf_credit = NULL;
+    struct VC {
+        VC(int bufsize);
+        ~VC();
+
+        enum GlobalState global = STATE_IDLE;
+        enum GlobalState next_global = STATE_IDLE;
+        int input_port = -1;
+        int input_vc = 0;
+        int credit_count;
+        Credit *buf_credit = NULL;
+    };
+    std::vector<VC> vcs;
 };
 
 Event tick_event_from_id(Id id);
@@ -222,18 +234,19 @@ struct RandomGenerator {
 /// destination node.
 struct Sim;
 struct Router {
-    Router(Sim &sim, EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
-           TrafficDesc trd, RandomGenerator &rg, long packet_len,
+    Router(Sim &sim, EventQueue *eq, Stat *st, Id id, int radix, int vc_count,
+           TopoDesc td, TrafficDesc trd, RandomGenerator &rg, long packet_len,
            Channel **in_chs, Channel **out_chs, long input_buf_size);
     ~Router();
 
     Sim &sim;                   // FIXME: not pretty
-    Id id;                      // router ID
-    int radix;                  // radix
-    long flit_arrive_count = 0; // # of flits arrived for the destination node
-    long flit_depart_count = 0; // # of flits departed for the destination node
     EventQueue *eventq;         // reference to the simulator-global event queue
     Stat *stat;
+    Id id;                      // router ID
+    int radix;                  // radix
+    int vc_count;               // number of VCs per channel
+    long flit_arrive_count = 0; // # of flits arrived for the destination node
+    long flit_depart_count = 0; // # of flits departed for the destination node
     TopoDesc top_desc;
     TrafficDesc traffic_desc;
     RandomGenerator &rand_gen;
@@ -241,20 +254,18 @@ struct Router {
     long packet_len;           // length of a packet in flits
     bool reschedule_next_tick =
         false; // marks whether to self-tick at the next cycle
-
     struct SourceGenInfo {
         bool packet_finished = true;
         long next_packet_start = 0;
         long packet_counter = 0;
         long flitnum = 0; // n-th flit counter of a packet
     } sg;
-
     Channel **input_channels;  // accessor to the input channels
     Channel **output_channels; // accessor to the output channels
     long input_buf_size;       // max size of each input flit queue
     Flit **source_queue;       // source queue
-    std::vector<InputUnit> input_units;    // input units
-    std::vector<OutputUnit> output_units;  // output units
+    std::vector<InputUnit> input_units;   // input units
+    std::vector<OutputUnit> output_units; // output units
     int va_last_grant_input = 0;   // for round-robin arbitration
     int sa_last_grant_input = 0;   // for round-robin arbitration
 };
