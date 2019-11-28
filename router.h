@@ -9,6 +9,8 @@
 
 // Port that is always connected to a terminal.
 #define TERMINAL_PORT 0
+// Only 1 VC is used for the input channel for destination nodes.
+#define DESTINATION_VC 0
 // Single VC used in the terminal-router channel.
 #define TERMINAL_VC 0
 // Maximum supported torus dimension.
@@ -267,6 +269,7 @@ struct Router {
     std::vector<InputUnit> input_units;   // input units
     std::vector<OutputUnit> output_units; // output units
     int va_last_grant_input = 0;   // for round-robin arbitration
+    int va_last_grant_output = 0;   // for round-robin arbitration
     int sa_last_grant_input = 0;   // for round-robin arbitration
 };
 

@@ -489,37 +489,54 @@ void source_generate(Router *r)
     }
 
     // After exiting the source queue.
-    // Terminal nodes only utilize one VC.
-    OutputUnit::VC &ovc = r->output_units[0].vcs[0 /*FIXME*/];
-
-    if (!queue_empty(r->source_queue) && ovc.credit_count > 0) {
+    if (!queue_empty(r->source_queue)) {
         Flit *ready_flit = queue_front(r->source_queue);
-        queue_pop(r->source_queue);
-        Channel *och = r->output_channels[0];
-        channel_put(och, ready_flit);
 
-        debugf(r, "Source credit decrement, credit=%d->%d\n", ovc.credit_count,
-               ovc.credit_count - 1);
-        ovc.credit_count--;
-        assert(ovc.credit_count >= 0);
+        int ovc_num = r->va_last_grant_input;
+        if (ready_flit->type == FLIT_HEAD) {
+            // Round-robin VC arbitration
+            ovc_num = (r->va_last_grant_input + 1) % r->vc_count;
+            for (int i = 0; i < r->vc_count; i++) {
+                OutputUnit::VC &ovc = r->output_units[0].vcs[ovc_num];
+                // Select the first one that has credits.
+                if (ovc.credit_count > 0) {
+                    r->va_last_grant_input = ovc_num;
+                    break;
+                }
+                ovc_num = (ovc_num + 1) % r->vc_count;
+            }
+        }
 
-        r->flit_depart_count++;
+        OutputUnit::VC &ovc = r->output_units[0].vcs[ovc_num];
+        if (ovc.credit_count > 0) {
+            queue_pop(r->source_queue);
+            Channel *och = r->output_channels[0];
+            channel_put(och, ready_flit);
 
-        char s[IDSTRLEN];
-        debugf(r, "Flit sent: %s\n", flit_str(ready_flit, s));
+            debugf(r, "Source credit decrement, credit=%d->%d\n",
+                   ovc.credit_count, ovc.credit_count - 1);
+            ovc.credit_count--;
+            assert(ovc.credit_count >= 0);
 
-        // Infinitely generate flits.
-        // TODO: Set and control generation rate.
-        r->reschedule_next_tick = 1;
-    } else {
-        debugf(r, "Credit stall!\n");
+            r->flit_depart_count++;
+
+            char s[IDSTRLEN];
+            debugf(r, "Flit sent: %s\n", flit_str(ready_flit, s));
+
+            // Infinitely generate flits.
+            // TODO: Set and control generation rate.
+            r->reschedule_next_tick = 1;
+        } else {
+            debugf(r, "Credit stall!\n");
+        }
     }
 }
 
 void destination_consume(Router *r)
 {
-    InputUnit *iu = &r->input_units[0];
-    InputUnit::VC *ivc = &iu->vcs[0 /*FIXME*/];
+    // TODO: Important: always make sure that only VC0 is used for the channels that
+    // go into destination nodes.
+    InputUnit::VC *ivc = &r->input_units[TERMINAL_PORT].vcs[DESTINATION_VC];
     char s[IDSTRLEN];
 
     if (!queue_empty(ivc->buf)) {
