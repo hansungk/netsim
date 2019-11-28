@@ -123,7 +123,6 @@ Flit::Flit(enum FlitType t, int src, int dst, PacketId pid, long flitnum)
 {
     route_info.src = src;
     route_info.dst = dst;
-    // route_info.path = std::vector<int>{0, 1, 2};
 }
 
 void flit_destroy(Flit *flit)
@@ -271,7 +270,7 @@ void router_reschedule(Router *r)
 // Expects that src_id and dst_id is on the same ring.
 // Appends computed route after 'path'. Does NOT put the final routing to the
 // terminal node.
-static std::vector<int> &source_route_compute_dimension(TopoDesc td, int src_id,
+static void source_route_compute_dimension(TopoDesc td, int src_id,
                                                         int dst_id,
                                                         int direction,
                                                         std::vector<int> &path)
@@ -293,8 +292,6 @@ static std::vector<int> &source_route_compute_dimension(TopoDesc td, int src_id,
             path.push_back(get_output_port(direction, 0));
         }
     }
-
-    return path;
 }
 
 // Source-side all-in-one route computation.
@@ -308,8 +305,7 @@ std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id)
     for (int dir = 0; dir < td.r; dir++) {
         int interim_id = torus_align_id(td.k, last_src_id, dst_id, dir);
         // printf("%s: from %d to %d\n", __func__, last_src_id, interim_id);
-        path = source_route_compute_dimension(td, last_src_id, interim_id, dir,
-                                              path);
+        source_route_compute_dimension(td, last_src_id, interim_id, dir, path);
         last_src_id = interim_id;
     }
     // Enter the final destination node.
