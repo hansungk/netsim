@@ -270,17 +270,25 @@ void router_reschedule(Router *r)
 // Expects that src_id and dst_id is on the same ring.
 // Appends computed route after 'path'. Does NOT put the final routing to the
 // terminal node.
-static void source_route_compute_dimension(TopoDesc td, int src_id,
-                                                        int dst_id,
-                                                        int direction,
-                                                        std::vector<int> &path)
+static void source_route_compute_dimension(TopoDesc td,
+                                           RandomGenerator &rg,
+                                           int src_id, int dst_id,
+                                           int direction,
+                                           std::vector<int> &path)
 {
     int total = td.k;
     int src_id_xyz = torus_id_xyz_get(src_id, td.k, direction);
     int dst_id_xyz = torus_id_xyz_get(dst_id, td.k, direction);
     int cw_dist = (dst_id_xyz - src_id_xyz + total) % total;
 
-    if (cw_dist <= total / 2) {
+    if ((total % 2) == 0 && cw_dist == (total / 2)) {
+        int dice = rg.uni_dist(rg.gen);
+        if ((dice % 2) == 0) {
+            path.push_back(get_output_port(direction, 1));
+        } else {
+            path.push_back(get_output_port(direction, 0));
+        }
+    } else if (cw_dist <= (total / 2)) {
         // Clockwise
         for (int i = 0; i < cw_dist; i++) {
             path.push_back(get_output_port(direction, 1));
@@ -296,7 +304,7 @@ static void source_route_compute_dimension(TopoDesc td, int src_id,
 
 // Source-side all-in-one route computation.
 // Returns an stb array containing the series of routed output ports.
-std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id)
+std::vector<int> source_route_compute(TopoDesc td, RandomGenerator &rg, int src_id, int dst_id)
 {
     std::vector<int> path;
 
@@ -305,7 +313,7 @@ std::vector<int> source_route_compute(TopoDesc td, int src_id, int dst_id)
     for (int dir = 0; dir < td.r; dir++) {
         int interim_id = torus_align_id(td.k, last_src_id, dst_id, dir);
         // printf("%s: from %d to %d\n", __func__, last_src_id, interim_id);
-        source_route_compute_dimension(td, last_src_id, interim_id, dir, path);
+        source_route_compute_dimension(td, rg, last_src_id, interim_id, dir, path);
         last_src_id = interim_id;
     }
     // Enter the final destination node.
@@ -422,11 +430,11 @@ void source_generate(Router *r)
 
             flit->type = FLIT_HEAD;
             flit->route_info.path = source_route_compute(
-                r->top_desc, flit->route_info.src, flit->route_info.dst);
+                r->top_desc, r->rand_gen, flit->route_info.src, flit->route_info.dst);
             r->sg.flitnum++;
 
             // Set the time the next packet is generated.
-            r->sg.next_packet_start = r->eventq->curr_time() + 13;
+            r->sg.next_packet_start = r->eventq->curr_time() + 10;
             schedule(r->eventq, r->sg.next_packet_start,
                      tick_event_from_id(r->id));
 
@@ -485,7 +493,7 @@ void source_generate(Router *r)
 
         // Infinitely generate flits.
         // TODO: Set and control generation rate.
-        // r->reschedule_next_tick = 1;
+        r->reschedule_next_tick = 1;
     } else {
         debugf(r, "Credit stall!\n");
     }
