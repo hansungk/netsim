@@ -166,43 +166,26 @@ char *globalstate_str(enum GlobalState state, char *s)
     return s;
 }
 
-static InputUnit inputunit_create(int bufsize)
+InputUnit::InputUnit(int bufsize)
 {
-    Flit **buf = NULL;
+    buf = NULL;
     queue_init(buf, bufsize * 2);
-    return (InputUnit){
-        .global = STATE_IDLE,
-        .next_global = STATE_IDLE,
-        .route_port = -1,
-        .output_vc = 0,
-        .stage = PIPELINE_IDLE,
-        .buf = buf,
-        .st_ready = NULL,
-    };
 }
 
-static OutputUnit outputunit_create(int bufsize)
+InputUnit::~InputUnit()
 {
-    Credit *buf_credit = NULL;
+    queue_free(buf);
+}
+
+OutputUnit::OutputUnit(int bufsize) : credit_count(bufsize)
+{
+    buf_credit = NULL;
     queue_init(buf_credit, bufsize * 2); // FIXME: unnecessarily big.
-    return (OutputUnit){
-        .global = STATE_IDLE,
-        .next_global = STATE_IDLE,
-        .input_port = -1,
-        .input_vc = 0,
-        .credit_count = bufsize,
-        .buf_credit = buf_credit,
-    };
 }
 
-static void inputunit_destroy(InputUnit *iu)
+OutputUnit::~OutputUnit()
 {
-    queue_free(iu->buf);
-}
-
-static void outputunit_destroy(OutputUnit *ou)
-{
-    queue_free(ou->buf_credit);
+    queue_free(buf_credit);
 }
 
 Router::Router(Sim &sim, EventQueue *eq, Id id, int radix, Stat *st,
@@ -229,18 +212,16 @@ Router::Router(Sim &sim, EventQueue *eq, Id id, int radix, Stat *st,
         queue_init(source_queue, 10000);
     }
 
-    input_units = NULL;
-    output_units = NULL;
+    input_units.reserve(radix);
+    output_units.reserve(radix);
     for (int port = 0; port < radix; port++) {
-        InputUnit iu = inputunit_create(input_buf_size);
-        OutputUnit ou = outputunit_create(input_buf_size);
-        arrput(input_units, iu);
-        arrput(output_units, ou);
+        input_units.emplace_back(input_buf_size);
+        output_units.emplace_back(input_buf_size);
     }
 
     if (is_src(id) || is_dst(id)) {
-        assert(arrlen(input_units) == 1);
-        assert(arrlen(output_units) == 1);
+        assert(input_units.size() == 1);
+        assert(output_units.size() == 1);
         // There are no route computation stages for terminal nodes, so set the
         // routed ports for each IU/OU statically here.
         input_units[0].route_port = TERMINAL_PORT;
@@ -250,12 +231,6 @@ Router::Router(Sim &sim, EventQueue *eq, Id id, int radix, Stat *st,
 
 Router::~Router()
 {
-    for (int port = 0; port < radix; port++) {
-        inputunit_destroy(&input_units[port]);
-        outputunit_destroy(&output_units[port]);
-    }
-    arrfree(input_units);
-    arrfree(output_units);
     if (source_queue) queue_free(source_queue);
     arrfree(input_channels);
     arrfree(output_channels);
@@ -302,6 +277,10 @@ static void source_route_compute_dimension(Router *r, TopoDesc td,
         //     to_larger = 0;
         // }
         // printf("adaptive routed to %d\n", get_output_port(direction, to_larger));
+
+
+        // FIXME
+        to_larger = 1;
 
         for (int i = 0; i < cw_dist; i++) {
             path.push_back(get_output_port(direction, to_larger));
@@ -453,7 +432,7 @@ void source_generate(Router *r)
             r->sg.flitnum++;
 
             // Set the time the next packet is generated.
-            r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len + 2;
+            r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len + 0;
             schedule(r->eventq, r->sg.next_packet_start,
                      tick_event_from_id(r->id));
 

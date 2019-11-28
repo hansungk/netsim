@@ -184,22 +184,28 @@ char *globalstate_str(enum GlobalState state, char *s);
 // credit_count is omitted in the input unit; it can be found in the output unit
 // instead.
 struct InputUnit {
-    enum GlobalState global;
-    enum GlobalState next_global;
-    int route_port;
-    int output_vc;
-    enum PipelineStage stage;
-    Flit **buf;
-    Flit *st_ready;
+    InputUnit(int bufsize);
+    ~InputUnit();
+
+    enum GlobalState global = STATE_IDLE;
+    enum GlobalState next_global = STATE_IDLE;
+    int route_port = -1;
+    int output_vc = 0;
+    enum PipelineStage stage = PIPELINE_IDLE;
+    Flit **buf = NULL;
+    Flit *st_ready = NULL;
 };
 
 struct OutputUnit {
-    enum GlobalState global;
-    enum GlobalState next_global;
-    int input_port;
-    int input_vc;
+    OutputUnit(int bufsize);
+    ~OutputUnit();
+
+    enum GlobalState global = STATE_IDLE;
+    enum GlobalState next_global = STATE_IDLE;
+    int input_port= -1;
+    int input_vc = 0;
     int credit_count;
-    Credit *buf_credit;
+    Credit *buf_credit = NULL;
 };
 
 Event tick_event_from_id(Id id);
@@ -217,8 +223,8 @@ struct RandomGenerator {
 struct Sim;
 struct Router {
     Router(Sim &sim, EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
-           TrafficDesc trd, RandomGenerator &rg, long packet_len, Channel **in_chs,
-           Channel **out_chs, long input_buf_size);
+           TrafficDesc trd, RandomGenerator &rg, long packet_len,
+           Channel **in_chs, Channel **out_chs, long input_buf_size);
     ~Router();
 
     Sim &sim;                   // FIXME: not pretty
@@ -247,8 +253,8 @@ struct Router {
     Channel **output_channels; // accessor to the output channels
     long input_buf_size;       // max size of each input flit queue
     Flit **source_queue;       // source queue
-    InputUnit *input_units;    // input units
-    OutputUnit *output_units;  // output units
+    std::vector<InputUnit> input_units;    // input units
+    std::vector<OutputUnit> output_units;  // output units
     int va_last_grant_input = 0;   // for round-robin arbitration
     int sa_last_grant_input = 0;   // for round-robin arbitration
 };
