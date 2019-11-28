@@ -12,10 +12,9 @@ int main(int argc, char **argv) {
     Topology top = topology_torus(4, 2);
 
     Sim sim{debug, top, 16, 16, 5, 7};
-    schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
-    schedule(&sim.eventq, 0, tick_event_from_id(src_id(1)));
-    schedule(&sim.eventq, 0, tick_event_from_id(src_id(2)));
-    schedule(&sim.eventq, 0, tick_event_from_id(src_id(3)));
+    for (int i = 0; i < 16; i++) {
+        schedule(&sim.eventq, 0, tick_event_from_id(src_id(i)));
+    }
 
     sim_run(&sim, 100000);
 

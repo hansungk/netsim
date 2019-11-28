@@ -4,6 +4,18 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <assert.h>
+#include <random>
+
+TrafficDesc::TrafficDesc(int terminal_count)
+    : type(TRF_UNIFORM_RANDOM), dests(terminal_count)
+{
+    // TODO: seed?
+    std::default_random_engine gen;
+    std::uniform_int_distribution<int> uni_dist{0, terminal_count - 1};
+    for (int i = 0; i < terminal_count; i++) {
+        dests[i] = uni_dist(gen);
+    }
+}
 
 void debugf(Router *r, const char *fmt, ...)
 {
@@ -387,7 +399,11 @@ void source_generate(Router *r)
     if (!queue_full(r->source_queue) &&
         (r->eventq->curr_time() >= r->sg.next_packet_start ||
          !r->sg.packet_finished)) {
-        // TODO: Proper traffic pattern.
+
+        //
+        // Flit generation.
+        //
+
         int dest = r->traffic_desc.dests[r->id.value];
         PacketId packet_id{r->id.value, r->sg.packet_counter};
         Flit *flit =
@@ -412,13 +428,13 @@ void source_generate(Router *r)
 
             // Set the time the next packet is generated.
             r->sg.next_packet_start =
-                r->eventq->curr_time() + 30 * r->packet_len;
+                r->eventq->curr_time() + 10 * r->packet_len;
             schedule(r->eventq, r->sg.next_packet_start,
                      tick_event_from_id(r->id));
 
             // Record packet generation time.
             PacketTimestamp ts{.gen = r->eventq->curr_time(), .arr = -1};
-            auto result = r->stat->packet_timestamp_map.insert({flit->packet_id, ts});
+            auto result = r->stat->packet_ledger.insert({flit->packet_id, ts});
             assert(result.second);
 
             debugf(r, "Source route computation: %d -> %d : {",
@@ -448,7 +464,7 @@ void source_generate(Router *r)
         char s[IDSTRLEN];
         debugf(r, "Flit generated: %s\n", flit_str(flit, s));
         debugf(r, "Source queue len=%ld\n", queue_len(r->source_queue));
-    } else {
+    } else if (queue_full(r->source_queue)) {
         debugf(r, "WARN: source queue full!\n");
     }
 
@@ -488,23 +504,23 @@ void destination_consume(Router *r)
         if (flit->type == FLIT_HEAD) {
             // Record packet arrival time.
             // debugf(r, "Finding packet ID=%ld,%ld\n", flit->packet_id.src, flit->packet_id.id);
-            // for (auto it : r->stat->packet_timestamp_map) {
+            // for (auto it : r->stat->packet_ledger) {
             //     printf("src=%ld, id=%ld, gen=%ld\n", it.first.src, it.first.id, it.second.gen);
             // }
-            auto f = r->stat->packet_timestamp_map.find(flit->packet_id);
-            if (f == r->stat->packet_timestamp_map.end()) {
+            auto f = r->stat->packet_ledger.find(flit->packet_id);
+            if (f == r->stat->packet_ledger.end()) {
                 printf("src=%ld, id=%ld not found\n", flit->packet_id.src, flit->packet_id.id);
             }
-            assert(f != r->stat->packet_timestamp_map.end() && "Packet not recorded upon generation!");
+            assert(f != r->stat->packet_ledger.end() && "Packet not recorded upon generation!");
             f->second.arr = r->eventq->curr_time();
             long arr = f->second.arr;
             long gen = f->second.gen;
             // debugf(r, "Deleting packet ID=%ld,%ld\n", flit->packet_id.src, flit->packet_id.id);
-            // debugf(r, "packet map size=%ld\n", r->stat->packet_timestamp_map.size());
-            r->stat->packet_timestamp_map.erase(flit->packet_id);
+            // debugf(r, "packet map size=%ld\n", r->stat->packet_ledger.size());
+            r->stat->packet_ledger.erase(flit->packet_id);
 
             debugf(r, "Packet arrived: %s, latency=%ld (arr=%ld, gen=%ld). mapsize=%ld\n",
-                   flit_str(flit, s), arr - gen, arr, gen, r->stat->packet_timestamp_map.size());
+                   flit_str(flit, s), arr - gen, arr, gen, r->stat->packet_ledger.size());
         }
 
         debugf(r, "Destination buf size=%zd\n", queue_len(iu->buf));

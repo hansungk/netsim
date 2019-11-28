@@ -19,29 +19,22 @@
 struct PacketId {
     long src;
     long id;
-
-    bool operator<(const PacketId &b) const
-    {
-        return (src < b.src) || (id < b.id);
-    }
 };
+
+inline bool operator<(const PacketId &a, const PacketId &b)
+{
+    return (a.src < b.src) || (a.src == b.src && a.id < b.id);
+}
 
 struct PacketTimestamp {
     long gen; // cycle # that the packet was generated
     long arr; // cycle # that the whole packet arrived
 };
 
-// Used to track the network latency of a packet.
-typedef struct PacketTimestampMap {
-    long key; // packet ID
-    PacketTimestamp value;
-} PacketTimestampMap;
-
-typedef struct Stat {
+struct Stat {
     long double_tick_count = 0;
-    // PacketTimestampMap *packet_timestamp_map = NULL;
-    std::map<PacketId, PacketTimestamp> packet_timestamp_map;
-} Stat;
+    std::map<PacketId, PacketTimestamp> packet_ledger;
+};
 
 typedef struct RouterPortPair {
     Id id;
@@ -104,11 +97,12 @@ enum TrafficType {
 };
 
 struct TrafficDesc {
-    TrafficDesc() {}
+    // Default: Uniform Random Traffic
+    TrafficDesc(int terminal_count);
     TrafficDesc(TrafficType t, std::vector<int> ds) : type(t), dests(ds) {}
 
     TrafficType type; // traffic type
-    std::vector<int> dests{0};       // destination table
+    std::vector<int> dests;       // destination table
 };
 
 enum FlitType {
