@@ -16,9 +16,11 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-target_compile_options(netsim PRIVATE -Wall -Wextra -Wno-unused-parameter -fno-omit-frame-pointer)
+target_compile_options(netsim PRIVATE -Wall -Wextra -Wno-unused-parameter
+    -fno-omit-frame-pointer "$<$<CONFIG:DEBUG>:-ggdb>")
 target_link_libraries(netsim PRIVATE -fno-omit-frame-pointer)
 
+# Colored error and warning outputs
 if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(netsim PRIVATE -fcolor-diagnostics)
 elseif (CMAKE_C_COMPILER_ID STREQUAL "GNU")
