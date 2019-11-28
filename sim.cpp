@@ -8,13 +8,14 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
          int radix, long input_buf_size)
     : debug_mode(debug_mode),
       topology(top),
-      traffic_desc(terminal_count)
+      traffic_desc(terminal_count),
+      rand_gen(terminal_count)
 {
-    traffic_desc = {TRF_DESIGNATED, std::vector<int>(16)};
-    traffic_desc.dests[0] = 10;
-    traffic_desc.dests[1] = 10;
-    traffic_desc.dests[2] = 10;
-    traffic_desc.dests[3] = 10;
+    // traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
+    // traffic_desc.dests[0] = 2;
+    // traffic_desc.dests[1] = 3;
+    // traffic_desc.dests[2] = 0;
+    // traffic_desc.dests[3] = 1;
     channel_delay = 1; /* FIXME hardcoded */
     packet_len = 4; /* FIXME hardcoded */
 
@@ -63,11 +64,11 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
         arrput(dst_in_chs, dst_in_ch);
 
         src_nodes.push_back(std::make_unique<Router>(
-            &eventq, src_id(id), 1, &stat, top.desc, traffic_desc, packet_len,
-            src_in_chs, src_out_chs, input_buf_size));
+            &eventq, src_id(id), 1, &stat, top.desc, traffic_desc, rand_gen,
+            packet_len, src_in_chs, src_out_chs, input_buf_size));
         dst_nodes.push_back(std::make_unique<Router>(
-            &eventq, dst_id(id), 1, &stat, top.desc, traffic_desc, packet_len,
-            dst_in_chs, dst_out_chs, input_buf_size));
+            &eventq, dst_id(id), 1, &stat, top.desc, traffic_desc, rand_gen,
+            packet_len, dst_in_chs, dst_out_chs, input_buf_size));
 
         arrfree(src_in_chs);
         arrfree(src_out_chs);
@@ -98,7 +99,7 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
         }
 
         routers.push_back(std::make_unique<Router>(
-            &eventq, rtr_id(id), radix, &stat, top.desc, traffic_desc,
+            &eventq, rtr_id(id), radix, &stat, top.desc, traffic_desc, rand_gen,
             packet_len, in_chs, out_chs, input_buf_size));
 
         arrfree(in_chs);
@@ -197,6 +198,10 @@ void sim_report(Sim *sim) {
         printf("[%s] ", id_str(dst->id, s));
         printf("# of flits arrived: %ld\n", dst->flit_arrive_count);
     }
+
+    float latency_avg = static_cast<float>(sim->stat.latency_sum) /
+                        static_cast<float>(sim->stat.packet_num);
+    printf("Average latency: %lf\n", latency_avg);
 }
 
 // Process an event.

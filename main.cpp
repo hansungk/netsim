@@ -13,10 +13,10 @@ int main(int argc, char **argv) {
 
     Sim sim{debug, top, 16, 16, 5, 7};
     for (int i = 0; i < 16; i++) {
-        schedule(&sim.eventq, 0, tick_event_from_id(src_id(i)));
+        schedule(&sim.eventq, i, tick_event_from_id(src_id(i)));
     }
 
-    sim_run(&sim, 10000);
+    sim_run(&sim, 100000);
 
     sim_report(&sim);
 

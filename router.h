@@ -5,6 +5,7 @@
 #include "stb_ds.h"
 #include <vector>
 #include <map>
+#include <random>
 
 // Port that is always connected to a terminal.
 #define TERMINAL_PORT 0
@@ -34,6 +35,8 @@ struct PacketTimestamp {
 struct Stat {
     long double_tick_count = 0;
     std::map<PacketId, PacketTimestamp> packet_ledger;
+    long latency_sum = 0;
+    long packet_num = 0;
 };
 
 typedef struct RouterPortPair {
@@ -203,11 +206,19 @@ struct OutputUnit {
 
 Event tick_event_from_id(Id id);
 
+struct RandomGenerator {
+    RandomGenerator(int terminal_count);
+
+    std::default_random_engine gen;
+    std::random_device rd;
+    std::uniform_int_distribution<int> uni_dist;
+};
+
 /// A router. It can represent any of a switch node, a source node and a
 /// destination node.
 struct Router {
     Router(EventQueue *eq, Id id, int radix, Stat *st, TopoDesc td,
-           TrafficDesc trd, long packet_len, Channel **in_chs,
+           TrafficDesc trd, RandomGenerator &rg, long packet_len, Channel **in_chs,
            Channel **out_chs, long input_buf_size);
     ~Router();
 
@@ -219,7 +230,8 @@ struct Router {
     Stat *stat;
     TopoDesc top_desc;
     TrafficDesc traffic_desc;
-    long last_tick = -1;            // prevents double-tick in a cycle
+    RandomGenerator &rand_gen;
+    long last_tick = -1;       // prevents double-tick in a cycle
     long packet_len;           // length of a packet in flits
     bool reschedule_next_tick =
         false; // marks whether to self-tick at the next cycle
