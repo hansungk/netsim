@@ -4,6 +4,7 @@
 #include "event.h"
 #include "stb_ds.h"
 #include <vector>
+#include <map>
 
 // Port that is always connected to a terminal.
 #define TERMINAL_PORT 0
@@ -14,10 +15,21 @@
 // Packet size in number of flits.
 #define PACKET_SIZE 4
 
-typedef struct PacketTimestamp {
+// ID of the source node is encoded into PacketId.
+struct PacketId {
+    long src;
+    long id;
+
+    bool operator<(const PacketId &b) const
+    {
+        return (src < b.src) || (id < b.id);
+    }
+};
+
+struct PacketTimestamp {
     long gen; // cycle # that the packet was generated
     long arr; // cycle # that the whole packet arrived
-} PacketTimestamp;
+};
 
 // Used to track the network latency of a packet.
 typedef struct PacketTimestampMap {
@@ -27,7 +39,8 @@ typedef struct PacketTimestampMap {
 
 typedef struct Stat {
     long double_tick_count = 0;
-    PacketTimestampMap *packet_timestamp_map = NULL;
+    // PacketTimestampMap *packet_timestamp_map = NULL;
+    std::map<PacketId, PacketTimestamp> packet_timestamp_map;
 } Stat;
 
 typedef struct RouterPortPair {
@@ -113,12 +126,12 @@ typedef struct RouteInfo {
 
 /// Flit and credit encoding.
 /// Follows Fig. 16.13.
-typedef struct Flit {
+struct Flit {
     enum FlitType type;
     RouteInfo route_info;
-    long payload;
+    PacketId packet_id;
     long flitnum;
-} Flit;
+};
 
 Flit *flit_create(enum FlitType t, int src, int dst, long p, long flitnum);
 char *flit_str(const Flit *flit, char *s);
@@ -219,9 +232,9 @@ struct Router {
     struct SourceGenInfo {
         bool packet_finished = true;
         long next_packet_start = 0;
-        long flit_payload_counter = 0; // for simple payload generation
-        long flitnum = 0;              // n-th flit counter of a packet
-    } sg_info;
+        long packet_counter = 0;
+        long flitnum = 0; // n-th flit counter of a packet
+    } sg;
 
     Channel **input_channels;  // accessor to the input channels
     Channel **output_channels; // accessor to the output channels
