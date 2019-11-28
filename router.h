@@ -126,9 +126,10 @@ typedef struct RouteInfo {
 /// Flit and credit encoding.
 /// Follows Fig. 16.13.
 struct Flit {
-    Flit(enum FlitType t, int src, int dst, PacketId pid, long flitnum);
+    Flit(enum FlitType t, int vc, int src, int dst, PacketId pid, long flitnum);
 
     enum FlitType type;
+    long vc_num;
     RouteInfo route_info;
     PacketId packet_id;
     long flitnum;
@@ -136,9 +137,9 @@ struct Flit {
 
 char *flit_str(const Flit *flit, char *s);
 
-typedef struct Credit {
-    // VC is omitted, as we only have one VC per a physical channel.
-} Credit;
+struct Credit {
+    long vc_num;
+};
 
 typedef struct TimedFlit {
     long time;
