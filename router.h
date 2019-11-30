@@ -269,7 +269,8 @@ struct Router {
     Flit **source_queue;                  // source queue
     std::vector<InputUnit> input_units;   // input units
     std::vector<OutputUnit> output_units; // output units
-
+    struct Allocator {
+    } alloc;
     std::vector<int>
         va_last_grant_input; // for round-robin arbitration, for each input VC
     std::vector<int>
