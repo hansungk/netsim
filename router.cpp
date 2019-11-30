@@ -210,7 +210,8 @@ Router::Router(Sim &sim, EventQueue *eq, Stat *st, Id id, int radix,
                long input_buf_size)
     : sim(sim), eventq(eq), stat(st), id(id), radix(radix), vc_count(vc_count),
       top_desc(td), traffic_desc(trd), rand_gen(rg), packet_len(packet_len),
-      input_buf_size(input_buf_size)
+      input_buf_size(input_buf_size),
+      va_last_grant_output(radix, 0), sa_last_grant_output(radix, 0)
 {
     // Copy channel list
     input_channels = NULL;
@@ -711,8 +712,7 @@ void route_compute(Router *r)
 
                 char s[IDSTRLEN];
                 debugf(r, "RC success for %s (idx=%zu, oport=%d)\n",
-                       flit_str(flit, s), flit->route_info.idx,
-                       ivc.route_port);
+                       flit_str(flit, s), flit->route_info.idx, ivc.route_port);
 
                 flit->route_info.idx++;
 
@@ -729,29 +729,30 @@ void route_compute(Router *r)
 int vc_arbit_round_robin(Router *r, int out_port)
 {
     // Debug: print contenders
-    int *v = NULL;
-    for (int i = 0; i < r->radix; i++) {
-        InputUnit *iu = &r->input_units[i];
-        InputUnit::VC *ivc = &iu->vcs[0 /*FIXME*/];
-        if (ivc->global == STATE_VCWAIT && ivc->route_port == out_port)
-            arrput(v, i);
+    {
+        std::vector<int> v;
+        for (int i = 0; i < r->radix; i++) {
+            InputUnit *iu = &r->input_units[i];
+            InputUnit::VC *ivc = &iu->vcs[0 /*FIXME*/];
+            if (ivc->global == STATE_VCWAIT && ivc->route_port == out_port)
+                v.push_back(i);
+        }
+        if (!v.empty()) {
+            debugf(r, "VA: competing for oport %d from iports {", out_port);
+            for (size_t i = 0; i < v.size(); i++)
+                printf("%d,", v[i]);
+            printf("}\n");
+        }
     }
-    if (arrlen(v)) {
-        debugf(r, "VA: competing for oport %d from iports {", out_port);
-        for (int i = 0; i < arrlen(v); i++)
-            printf("%d,", v[i]);
-        printf("}\n");
-    }
-    arrfree(v);
 
-    int iport = (r->va_last_grant_input + 1) % r->radix;
+    int iport = (r->va_last_grant_output[out_port] + 1) % r->radix;
     for (int i = 0; i < r->radix; i++) {
         InputUnit *iu = &r->input_units[iport];
         InputUnit::VC *ivc = &iu->vcs[0 /*FIXME*/];
         if (ivc->global == STATE_VCWAIT && ivc->route_port == out_port) {
             // XXX: is VA stage and VCWait state the same?
             assert(ivc->stage == PIPELINE_VA);
-            r->va_last_grant_input = iport;
+            r->va_last_grant_output[out_port] = iport;
             return iport;
         }
         iport = (iport + 1) % r->radix;
@@ -763,7 +764,7 @@ int vc_arbit_round_robin(Router *r, int out_port)
 // This function expects the given output VC to be in the Active state.
 int sa_arbit_round_robin(Router *r, int out_port)
 {
-    int iport = (r->sa_last_grant_input + 1) % r->radix;
+    int iport = (r->sa_last_grant_output[out_port] + 1) % r->radix;
     for (int i = 0; i < r->radix; i++) {
         InputUnit *iu = &r->input_units[iport];
         InputUnit::VC *ivc = &iu->vcs[0 /*FIXME*/];
@@ -773,7 +774,7 @@ int sa_arbit_round_robin(Router *r, int out_port)
         if (ivc->stage == PIPELINE_SA && ivc->route_port == out_port &&
             ivc->global == STATE_ACTIVE && !queue_empty(ivc->buf)) {
             // debugf(r, "SA: granted oport %d to iport %d\n", out_port, iport);
-            r->sa_last_grant_input = iport;
+            r->sa_last_grant_output[out_port] = iport;
             return iport;
         } else if (ivc->stage == PIPELINE_SA && ivc->route_port == out_port &&
                    ivc->global == STATE_CREDWAIT) {
@@ -785,16 +786,83 @@ int sa_arbit_round_robin(Router *r, int out_port)
     return -1;
 }
 
+// Returns the index of the granted input.
+size_t round_robin_arbitration(const std::vector<bool> &request_vector,
+                             std::vector<bool> &grant_vector, int last_grant)
+{
+    grant_vector.clear();
+    grant_vector.resize(request_vector.size(), false);
+
+    size_t size = request_vector.size();
+    int candidate = (last_grant + 1) % size;
+    for (size_t i = 0; i < size; i++) {
+        if (request_vector[candidate]) {
+            grant_vector[candidate] = true;
+            return candidate;
+        }
+        candidate = (candidate + 1) % size;
+    }
+
+    // Indicates that there was no request.
+    return -1;
+}
+
+// Virtual channel allocation stage.
+// Does a (# of total input VCs) X (# of total output VCs) allocation.
 void vc_alloc(Router *r)
 {
-    // dbg() << "VC allocation\n";
+    //
+    // Separable (input-first) allocator.
+    //
+
+#if 0
+    int total_vc = r->radix * r->vc_count;
+    // Request vectors for each input VC. Has 1 request bit for each output VC.
+    // FIXME: memory allocation?
+    std::vector<std::vector<bool>> request_vectors(total_vc);
+    for (size_t i = 0; i < request_vectors.size(); i++) {
+        request_vectors[i].resize(total_vc, false);
+    }
+    // Input arbitration result vector, i.e. the 'x' vector in Figure 19.4.
+    std::vector<std::vector<bool>> x_vectors = request_vectors;
+    // Grant vectors.
+    std::vector<std::vector<bool>> grant_vectors = request_vectors;
+
+    // Step 0: Prepare request vectors.
+    for (int iport = 0; iport < r->radix; iport++) {
+        for (int vc_num = 0; vc_num < r->vc_count; vc_num++) {
+            InputUnit::VC &ivc = r->input_units[iport].vcs[vc_num];
+            if (ivc.global == STATE_VCWAIT) {
+                assert(ivc.route_port >= 0);
+                size_t irv_pos = iport * r->vc_count + vc_num;
+                size_t orv_pos_base = ivc.route_port * r->vc_count;
+                // Assert request for all output VCs of the routed oport.
+                for (int i = 0; i < r->vc_count; i++) {
+                    request_vectors[irv_pos][orv_pos_base + i] = true;
+                }
+            }
+        }
+    }
+
+    // Step 1: Input arbitration.
+    for (int i = 0; i < total_vc; i++) {
+        round_robin_arbitration(request_vectors[i], grant_vectors[i], r->va_last_grant_input);
+    }
+
+    // Step 2: Output arbitration.
+#endif
+
+    assert(r->vc_count == 1); // FIXME
 
     for (int oport = 0; oport < r->radix; oport++) {
-        OutputUnit *ou = &r->output_units[oport];
-        OutputUnit::VC *ovc = &ou->vcs[0 /*FIXME*/];
+        for (int vc_num = 0; vc_num < r->vc_count; vc_num++) {
+            OutputUnit::VC &ovc = r->output_units[oport].vcs[vc_num];
 
-        // Only do arbitration for inactive output VCs.
-        if (ovc->global == STATE_IDLE) {
+            // Only do arbitration for inactive output VCs.
+            if (ovc.global != STATE_IDLE) {
+                continue;
+            }
+
             // Arbitration
             int iport = vc_arbit_round_robin(r, oport);
 
@@ -809,19 +877,19 @@ void vc_alloc(Router *r)
                 debugf(r, "VA: success for %s from iport %d to oport %d\n",
                        flit_str(queue_front(ivc->buf), s), iport, oport);
 
-                // We now have the VC, but we cannot proceed to the SA stage if
-                // there is no credit.
-                if (ovc->credit_count == 0) {
+                // We now have the VC, but we cannot proceed to the SA stage
+                // if there is no credit.
+                if (ovc.credit_count == 0) {
                     debugf(r, "VA: no credit, switching to CreditWait\n");
                     ivc->next_global = STATE_CREDWAIT;
-                    ovc->next_global = STATE_CREDWAIT;
+                    ovc.next_global = STATE_CREDWAIT;
                 } else {
                     ivc->next_global = STATE_ACTIVE;
-                    ovc->next_global = STATE_ACTIVE;
+                    ovc.next_global = STATE_ACTIVE;
                 }
 
                 // Record the input port to the Output unit.
-                ovc->input_port = iport;
+                ovc.input_port = iport;
 
                 ivc->stage = PIPELINE_SA;
                 r->reschedule_next_tick = true;

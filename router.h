@@ -242,8 +242,8 @@ struct Router {
            Channel **in_chs, Channel **out_chs, long input_buf_size);
     ~Router();
 
-    Sim &sim;                   // FIXME: not pretty
-    EventQueue *eventq;         // reference to the simulator-global event queue
+    Sim &sim;           // FIXME: not pretty
+    EventQueue *eventq; // reference to the simulator-global event queue
     Stat *stat;
     Id id;                      // router ID
     int radix;                  // radix
@@ -253,8 +253,8 @@ struct Router {
     TopoDesc top_desc;
     TrafficDesc traffic_desc;
     RandomGenerator &rand_gen;
-    long last_tick = -1;       // prevents double-tick in a cycle
-    long packet_len;           // length of a packet in flits
+    long last_tick = -1; // prevents double-tick in a cycle
+    long packet_len;     // length of a packet in flits
     bool reschedule_next_tick =
         false; // marks whether to self-tick at the next cycle
     struct SourceGenInfo {
@@ -263,15 +263,15 @@ struct Router {
         long packet_counter = 0;
         long flitnum = 0; // n-th flit counter of a packet
     } sg;
-    Channel **input_channels;  // accessor to the input channels
-    Channel **output_channels; // accessor to the output channels
-    long input_buf_size;       // max size of each input flit queue
-    Flit **source_queue;       // source queue
+    Channel **input_channels;             // accessor to the input channels
+    Channel **output_channels;            // accessor to the output channels
+    long input_buf_size;                  // max size of each input flit queue
+    Flit **source_queue;                  // source queue
     std::vector<InputUnit> input_units;   // input units
     std::vector<OutputUnit> output_units; // output units
-    int va_last_grant_input = 0;   // for round-robin arbitration
-    int va_last_grant_output = 0;   // for round-robin arbitration
-    int sa_last_grant_input = 0;   // for round-robin arbitration
+    int va_last_grant_input = 0;          // for round-robin arbitration
+    std::vector<int> va_last_grant_output; // for round-robin arbitration, for each output VC
+    std::vector<int> sa_last_grant_output;          // for round-robin arbitration
 };
 
 void router_print_state(Router *r);

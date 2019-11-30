@@ -15,6 +15,7 @@ int main(int argc, char **argv) {
     schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
     schedule(&sim.eventq, 1, tick_event_from_id(src_id(1)));
     schedule(&sim.eventq, 2, tick_event_from_id(src_id(2)));
+    // schedule(&sim.eventq, 3, tick_event_from_id(src_id(3)));
     // for (int i = 0; i < 4; i++) {
     //     schedule(&sim.eventq, 0, tick_event_from_id(src_id(i)));
     // }
