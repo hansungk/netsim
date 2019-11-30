@@ -832,13 +832,14 @@ static size_t alloc_vector_pos(size_t grant_size, size_t input_vc,
 // modifies the grant vectors in-place.
 //
 // 'req_size': number of requests/grants waiting for allocation.
+// 'grant_size': number of resources available for grant.
 // 'which': for which req (if is_input_stage == 1) or grant (if is_input_stage
 //          == 0) should I arbitrate at this iteration?
 // 'is_input_stage': true of this is input arbitration, false if output
 // arbitration.
 //
-// Returns the VC whose request won the grant.
-size_t round_robin_arbitration(size_t req_size, size_t which, bool is_input_stage,
+// Returns the VC (global index) whose request won the grant.
+size_t round_robin_arbitration(size_t req_size, size_t grant_size, size_t which, bool is_input_stage,
                                size_t last_grant,
                                const std::vector<bool> &request_vectors,
                                std::vector<bool> &grant_vectors)
@@ -846,9 +847,9 @@ size_t round_robin_arbitration(size_t req_size, size_t which, bool is_input_stag
     // Clear the grant vector first.
     for (size_t i = 0; i < req_size; i++) {
         if (is_input_stage) {
-            grant_vectors[alloc_vector_pos(req_size, which, i)] = false;
+            grant_vectors[alloc_vector_pos(grant_size, which, i)] = false;
         } else {
-            grant_vectors[alloc_vector_pos(req_size, i, which)] = false;
+            grant_vectors[alloc_vector_pos(grant_size, i, which)] = false;
         }
     }
 
@@ -856,14 +857,14 @@ size_t round_robin_arbitration(size_t req_size, size_t which, bool is_input_stag
     for (size_t i = 0; i < req_size; i++) {
         size_t cand_pos;
         if (is_input_stage) {
-            cand_pos = alloc_vector_pos(req_size, which, candidate);
+            cand_pos = alloc_vector_pos(grant_size, which, candidate);
         } else {
-            cand_pos = alloc_vector_pos(req_size, candidate, which);
+            cand_pos = alloc_vector_pos(grant_size, candidate, which);
         }
 
         if (request_vectors[cand_pos]) {
             grant_vectors[cand_pos] = true;
-            return candidate;
+            return cand_pos;
         }
 
         candidate = (candidate + 1) % req_size;
@@ -915,10 +916,10 @@ void vc_alloc(Router *r)
     // Step 1: Input arbitration from request vectors to x-vectors.
     for (size_t global_ivc = 0; global_ivc < total_vc; global_ivc++) {
         size_t winner = round_robin_arbitration(
-            total_vc, global_ivc, true, r->va_last_grant_input[global_ivc],
-            request_vectors, x_vectors);
+            total_vc, total_vc, global_ivc, true,
+            r->va_last_grant_input[global_ivc], request_vectors, x_vectors);
         if (winner != static_cast<size_t>(-1)) {
-            r->va_last_grant_input[global_ivc] = winner;
+            r->va_last_grant_input[global_ivc] = (winner / total_vc);
         }
     }
 
@@ -931,10 +932,10 @@ void vc_alloc(Router *r)
         // Only do arbitration for available output VCs.
         if (ovc.global == STATE_IDLE) {
             size_t winner = round_robin_arbitration(
-                total_vc, global_ovc, false,
+                total_vc, total_vc, global_ovc, false,
                 r->va_last_grant_output[global_ovc], x_vectors, grant_vectors);
             if (winner != static_cast<size_t>(-1)) {
-                r->va_last_grant_output[global_ovc] = winner;
+                r->va_last_grant_output[global_ovc] = (winner / total_vc);
             }
         }
     }
@@ -1033,10 +1034,10 @@ void switch_alloc(Router *r)
     // Step 1: Input arbitration from request vectors to x-vectors.
     for (size_t global_ivc = 0; global_ivc < total_vc; global_ivc++) {
         size_t winner = round_robin_arbitration(
-            total_vc, global_ivc, true, r->sa_last_grant_input[global_ivc],
-            request_vectors, x_vectors);
+            total_vc, r->radix, global_ivc, true,
+            r->sa_last_grant_input[global_ivc], request_vectors, x_vectors);
         if (winner != static_cast<size_t>(-1)) {
-            r->sa_last_grant_input[global_ivc] = winner;
+            r->sa_last_grant_input[global_ivc] = (winner / r->radix);
         }
     }
 
@@ -1057,7 +1058,7 @@ void switch_alloc(Router *r)
             // unfortunately the blocked one, disregard it.
 
             size_t winner = round_robin_arbitration(
-                r->radix, oport, false,
+                total_vc, r->radix, oport, false,
                 r->sa_last_grant_output[oport], x_vectors, grant_vectors);
             if (winner != static_cast<size_t>(-1)) {
                 // Now check if the selected OVC is fortunate.
@@ -1067,6 +1068,8 @@ void switch_alloc(Router *r)
                 int ivc_num = global_ivc % r->vc_count;
 
                 InputUnit::VC &ivc = r->input_units[iport].vcs[ivc_num];
+                assert(ivc.global == STATE_ACTIVE);
+                assert(ivc.output_vc >= 0);
                 OutputUnit::VC &ovc = r->output_units[oport].vcs[ivc.output_vc];
 
                 // If unfortunate, the 'speculative' grant turned out to be
@@ -1075,7 +1078,7 @@ void switch_alloc(Router *r)
                     grant_vectors[winner] = false;
                 } else {
                     // FIXME: Should this be outside of this else?
-                    r->sa_last_grant_output[oport] = winner;
+                    r->sa_last_grant_output[oport] = (winner / r->radix);
                 }
             }
         }
@@ -1201,18 +1204,19 @@ void update_states(Router *r)
 {
     int changed = 0;
     for (int port = 0; port < r->radix; port++) {
-        InputUnit *iu = &r->input_units[port];
-        InputUnit::VC *ivc = &iu->vcs[0 /*FIXME*/];
-        OutputUnit *ou = &r->output_units[port];
-        OutputUnit::VC *ovc = &ou->vcs[0 /*FIXME*/];
-        if (ivc->global != ivc->next_global) {
-            ivc->global = ivc->next_global;
-            changed = 1;
-        }
-        if (ovc->global != ovc->next_global) {
-            assert(!(ovc->next_global == STATE_CREDWAIT && ovc->credit_count > 0));
-            ovc->global = ovc->next_global;
-            changed = 1;
+        for (int vc_num = 0; vc_num < r->vc_count; vc_num++) {
+            InputUnit::VC &ivc = r->input_units[port].vcs[vc_num];
+            OutputUnit::VC &ovc = r->output_units[port].vcs[vc_num];
+            if (ivc.global != ivc.next_global) {
+                ivc.global = ivc.next_global;
+                changed = 1;
+            }
+            if (ovc.global != ovc.next_global) {
+                assert(!(ovc.next_global == STATE_CREDWAIT &&
+                         ovc.credit_count > 0));
+                ovc.global = ovc.next_global;
+                changed = 1;
+            }
         }
     }
     // Reschedule whenever there is one or more state change.
@@ -1225,24 +1229,27 @@ void router_print_state(Router *r)
     printf("[%s]\n", id_str(r->id, s));
 
     for (int i = 0; i < r->radix; i++) {
-        InputUnit *iu = &r->input_units[i];
-        InputUnit::VC *ivc = &iu->vcs[0 /*FIXME*/];
-        printf(" Input[%d]: [%s] R=%2d {", i, globalstate_str(ivc->global, s),
-               ivc->route_port);
-        for (long i = queue_fronti(ivc->buf); i != queue_backi(ivc->buf);
-             i = (i + 1) % queue_cap(ivc->buf)) {
-            Flit *flit = ivc->buf[i];
-            printf("%s,", flit_str(flit, s));
+        for (int ivc_num = 0; ivc_num < r->vc_count; ivc_num++) {
+            InputUnit::VC &ivc = r->input_units[i].vcs[ivc_num];
+            printf(" Input[%d,VC%d]: [%s] R=%2d, OVC=%2d {", i, ivc_num,
+                    globalstate_str(ivc.global, s), ivc.route_port,
+                    ivc.output_vc);
+            for (long i = queue_fronti(ivc.buf); i != queue_backi(ivc.buf);
+                 i = (i + 1) % queue_cap(ivc.buf)) {
+                Flit *flit = ivc.buf[i];
+                printf("%s,", flit_str(flit, s));
+            }
+            printf("} ST:%s\n", flit_str(ivc.st_ready, s));
         }
-        printf("} ST:%s\n", flit_str(ivc->st_ready, s));
     }
 
     for (int i = 0; i < r->radix; i++) {
-        OutputUnit *ou = &r->output_units[i];
-        OutputUnit::VC *ovc = &ou->vcs[0 /*FIXME*/];
-        printf("Output[%d]: [%s] I=%2d, C=%2d\n", i,
-               globalstate_str(ovc->global, s), ovc->input_port,
-               ovc->credit_count);
+        for (int ovc_num = 0; ovc_num < r->vc_count; ovc_num++) {
+            OutputUnit::VC &ovc = r->output_units[i].vcs[ovc_num];
+            printf("Output[%d,VC%d]: [%s] I=%2d, IVC=%2d, C=%2d\n", i, ovc_num,
+                    globalstate_str(ovc.global, s), ovc.input_port,
+                    ovc.input_vc, ovc.credit_count);
+        }
     }
 
     for (int i = 0; i < r->radix; i++) {
