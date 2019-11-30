@@ -213,7 +213,7 @@ Router::Router(Sim &sim, EventQueue *eq, Stat *st, Id id, int radix,
       input_buf_size(input_buf_size), va_last_grant_input(radix * vc_count, 0),
       va_last_grant_output(radix * vc_count, 0),
       sa_last_grant_input(radix * vc_count, 0),
-      sa_last_grant_output(radix * vc_count, 0)
+      sa_last_grant_output(radix, 0)
 {
     // Copy channel list
     input_channels = NULL;
@@ -583,7 +583,7 @@ void destination_consume(Router *r)
         assert(queue_empty(ivc->buf));
 
         Channel *ich = r->input_channels[0];
-        channel_put_credit(ich, (Credit){});
+        channel_put_credit(ich, (Credit){DESTINATION_VC /* FIXME */});
 
         RouterPortPair src_pair = ich->conn.src;
         debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
@@ -638,7 +638,7 @@ void fetch_credit(Router *r)
 {
     for (int oport = 0; oport < r->radix; oport++) {
         Channel *och = r->output_channels[oport];
-        Credit c;
+        Credit c{0 /* overwritten */};
         int got = channel_get_credit(och, &c);
         if (got) {
             OutputUnit::VC &ovc = r->output_units[oport].vcs[c.vc_num];
@@ -711,6 +711,7 @@ void route_compute(Router *r)
                 assert(flit->type == FLIT_HEAD);
                 assert(flit->route_info.idx < flit->route_info.path.size());
                 ivc.route_port = flit->route_info.path[flit->route_info.idx];
+                // ivc.output_vc will be set in the VA stage.
 
                 char s[IDSTRLEN];
                 debugf(r, "RC success for %s (idx=%zu, oport=%d)\n",
@@ -788,51 +789,52 @@ int sa_arbit_round_robin(Router *r, int out_port)
     return -1;
 }
 
-static size_t alloc_vector_pos(size_t total_vc, size_t input_vc,
+static size_t alloc_vector_pos(size_t grant_size, size_t input_vc,
                                  size_t output_vc)
 {
-    return (input_vc * total_vc) + output_vc;
+    return (input_vc * grant_size) + output_vc;
 }
 
 // Returns the index of the granted input.
 // Accepts a large concatenation of all (xVC) request and grant vectors, and
 // modifies the grant vectors in-place.
 //
-// 'which_vc': what VC should I arbitrate at this iteration?
+// 'req_size': number of requests/grants waiting for allocation.
+// 'which': for which req (if is_input_stage == 1) or grant (if is_input_stage
+//          == 0) should I arbitrate at this iteration?
 // 'is_input_stage': true of this is input arbitration, false if output
 // arbitration.
 //
 // Returns the VC whose request won the grant.
-size_t round_robin_arbitration(size_t total_vc, size_t which_vc, bool is_input_stage,
+size_t round_robin_arbitration(size_t req_size, size_t which, bool is_input_stage,
                                size_t last_grant,
                                const std::vector<bool> &request_vectors,
                                std::vector<bool> &grant_vectors)
 {
     // Clear the grant vector first.
-    for (size_t i = 0; i < total_vc; i++) {
+    for (size_t i = 0; i < req_size; i++) {
         if (is_input_stage) {
-            grant_vectors[alloc_vector_pos(total_vc, which_vc, i)] = false;
+            grant_vectors[alloc_vector_pos(req_size, which, i)] = false;
         } else {
-            grant_vectors[alloc_vector_pos(total_vc, i, which_vc)] = false;
+            grant_vectors[alloc_vector_pos(req_size, i, which)] = false;
         }
     }
 
-    size_t candidate = (last_grant + 1) % total_vc;
-    for (size_t i = 0; i < total_vc; i++) {
+    size_t candidate = (last_grant + 1) % req_size;
+    for (size_t i = 0; i < req_size; i++) {
         size_t cand_pos;
         if (is_input_stage) {
-            cand_pos = alloc_vector_pos(total_vc, which_vc, candidate);
+            cand_pos = alloc_vector_pos(req_size, which, candidate);
         } else {
-            cand_pos = alloc_vector_pos(total_vc, candidate, which_vc);
+            cand_pos = alloc_vector_pos(req_size, candidate, which);
         }
-        assert(cand_pos < total_vc * total_vc);
 
         if (request_vectors[cand_pos]) {
             grant_vectors[cand_pos] = true;
             return candidate;
         }
 
-        candidate = (candidate + 1) % total_vc;
+        candidate = (candidate + 1) % req_size;
     }
 
     // Indicates that there was no request.
@@ -840,7 +842,7 @@ size_t round_robin_arbitration(size_t total_vc, size_t which_vc, bool is_input_s
 }
 
 // Virtual channel allocation stage.
-// Does a (# of total input VCs) X (# of total output VCs) allocation.
+// Performs a (# of total input VCs) X (# of total output VCs) allocation.
 void vc_alloc(Router *r)
 {
     //
@@ -850,12 +852,13 @@ void vc_alloc(Router *r)
     // FIXME: PERFORMANCE!
 
     size_t total_vc = r->radix * r->vc_count;
+    size_t vector_size = total_vc * total_vc;
     // Request vectors for each input VC. Has 1 request bit for each output VC.
-    std::vector<bool> request_vectors(total_vc * total_vc, false);
+    std::vector<bool> request_vectors(vector_size, false);
     // Input arbitration result vector, i.e. the 'x' vector in Figure 19.4.
-    std::vector<bool> x_vectors(total_vc * total_vc, false);
+    std::vector<bool> x_vectors(vector_size, false);
     // Grant vectors.
-    std::vector<bool> grant_vectors(total_vc * total_vc, false);
+    std::vector<bool> grant_vectors(vector_size, false);
 
     // Step 0: Prepare request vectors.
     for (int iport = 0; iport < r->radix; iport++) {
@@ -906,7 +909,7 @@ void vc_alloc(Router *r)
 
     // Step 3: Update states for the granted VAs.
     int num_grant = 0;
-    for (size_t i = 0; i < total_vc * total_vc; i++) {
+    for (size_t i = 0; i < vector_size; i++) {
         if (grant_vectors[i]) {
             size_t global_ivc = i / total_vc;
             size_t global_ovc = i % total_vc;
@@ -920,6 +923,7 @@ void vc_alloc(Router *r)
 
             assert(ivc.global == STATE_VCWAIT);
             assert(ovc.global == STATE_IDLE);
+            assert(ivc.route_port == oport);
 
             char s[IDSTRLEN];
             debugf(r, "VA: success for %s from iport %d to oport %d\n",
@@ -936,8 +940,10 @@ void vc_alloc(Router *r)
                 ovc.next_global = STATE_ACTIVE;
             }
 
-            // Record the input port to the Output unit.
+            // Record the VA result into the input/output units.
+            ivc.output_vc = ovc_num;
             ovc.input_port = iport;
+            ovc.input_vc = ivc_num;
 
             ivc.stage = PIPELINE_SA;
             r->reschedule_next_tick = true;
@@ -949,79 +955,171 @@ void vc_alloc(Router *r)
     debugf(r, "VA: granted to %d input VCs.\n", num_grant);
 }
 
+// Switch allocation.
+// Performs a (# of total input VCs) X (# radix) allocation.
+// This is because the switch has no output speedup.
 void switch_alloc(Router *r)
 {
-    for (int oport = 0; oport < r->radix; oport++) {
-        OutputUnit *ou = &r->output_units[oport];
-        OutputUnit::VC *ovc = &ou->vcs[0 /*FIXME*/];
+    //
+    // Separable (input-first) allocator.
+    //
 
-        // Only do arbitration for output VCs that has available credits.
-        if (ovc->global == STATE_ACTIVE) {
-            // Arbitration
-            int iport = sa_arbit_round_robin(r, oport);
+    // FIXME: PERFORMANCE!
 
-            if (iport == -1) {
-                // dbg() << "no pending SA request!\n";
-            } else {
-                // SA success!
-                InputUnit *iu = &r->input_units[iport];
-                InputUnit::VC *ivc = &iu->vcs[0 /*FIXME*/];
-                assert(ivc->global == STATE_ACTIVE);
-                assert(ovc->global == STATE_ACTIVE);
-                // Because sa_arbit_round_robin only selects input units that
-                // has flits in them, the input queue cannot be empty.
-                assert(!queue_empty(ivc->buf));
+    size_t total_vc = r->radix * r->vc_count;
+    size_t vector_size = total_vc * r->radix;
+    // Request vectors for each input VC. Has 1 request bit for each output VC.
+    std::vector<bool> request_vectors(vector_size, false);
+    // Input arbitration result vector, i.e. the 'x' vector in Figure 19.4.
+    std::vector<bool> x_vectors(vector_size, false);
+    // Grant vectors.
+    std::vector<bool> grant_vectors(vector_size, false);
 
-                char s[IDSTRLEN];
-                debugf(r, "SA success for %s from iport %d to oport %d\n",
-                       flit_str(queue_front(ivc->buf), s), iport, oport);
-
-                // The flit leaves the buffer here.
-                Flit *flit = queue_front(ivc->buf);
-                queue_pop(ivc->buf);
-                assert(!ivc->st_ready);
-                ivc->st_ready = flit;
-
-                // Credit decrement.
-                debugf(r, "Credit decrement, credit=%d->%d (oport=%d)\n",
-                       ovc->credit_count, ovc->credit_count - 1, oport);
-                assert(ovc->credit_count > 0);
-                ovc->credit_count--;
-
-                // SA -> ?? transition
-                //
-                // Set the next stage according to the flit type and credit
-                // count.
-                //
-                // Note that switching state to CreditWait does NOT prevent the
-                // subsequent ST to happen. The flit that has succeeded SA on
-                // this cycle is transferred to ivc->st_ready, and that is the
-                // only thing that is visible to the ST stage.
-                if (flit->type == FLIT_TAIL) {
-                    ovc->next_global = STATE_IDLE;
-                    if (queue_empty(ivc->buf)) {
-                        ivc->next_global = STATE_IDLE;
-                        ivc->stage = PIPELINE_IDLE;
-                        // debugf(this, "SA: next state is Idle\n");
-                    } else {
-                        ivc->next_global = STATE_ROUTING;
-                        ivc->stage = PIPELINE_RC;
-                        // debugf(this, "SA: next state is Routing\n");
-                    }
-                    r->reschedule_next_tick = true;
-                } else if (ovc->credit_count == 0) {
-                    // debugf(r, "SA: switching to CW\n");
-                    ivc->next_global = STATE_CREDWAIT;
-                    ovc->next_global = STATE_CREDWAIT;
-                    // debugf(this, "SA: next state is CreditWait\n");
-                } else {
-                    ivc->next_global = STATE_ACTIVE;
-                    ivc->stage = PIPELINE_SA;
-                    // debugf(this, "SA: next state is Active\n");
-                    r->reschedule_next_tick = true;
-                }
-                assert(ovc->credit_count >= 0);
+    // Step 0: Prepare request vectors.
+    for (int iport = 0; iport < r->radix; iport++) {
+        for (int ivc_num = 0; ivc_num < r->vc_count; ivc_num++) {
+            InputUnit::VC &ivc = r->input_units[iport].vcs[ivc_num];
+            if (ivc.stage == PIPELINE_SA && ivc.global == STATE_ACTIVE &&
+                !queue_empty(ivc.buf)) {
+                assert(ivc.route_port >= 0);
+                size_t global_ivc = iport * r->vc_count + ivc_num;
+                size_t oport = ivc.route_port;
+                assert(global_ivc < total_vc);
+                // Assert request for the routed oport.
+                // NOTE: No output speedup.
+                request_vectors[alloc_vector_pos(r->radix, global_ivc, oport)] =
+                    true;
             }
+            // else if (ivc.stage == PIPELINE_SA &&
+            //            ivc.route_port == out_port &&
+            //            ivc.global == STATE_CREDWAIT) {
+            //     debugf(r, "Credit stall! port=%d\n", ivc->route_port);
+            // }
+        }
+    }
+
+    // Step 1: Input arbitration from request vectors to x-vectors.
+    for (size_t global_ivc = 0; global_ivc < total_vc; global_ivc++) {
+        size_t winner = round_robin_arbitration(
+            total_vc, global_ivc, true, r->sa_last_grant_input[global_ivc],
+            request_vectors, x_vectors);
+        if (winner != static_cast<size_t>(-1)) {
+            r->sa_last_grant_input[global_ivc] = winner;
+        }
+    }
+
+    // Step 2: Output arbitration from x-vectors to grant vectors.
+    for (int oport = 0; oport < r->radix; oport++) {
+        // Unless all VCs of this oport is non-active, attempt to allocate on
+        // this port.
+        bool oport_has_active_vc = false;
+        for (int ovc_num = 0; ovc_num < r->vc_count; ovc_num++) {
+            OutputUnit::VC &ovc = r->output_units[oport].vcs[ovc_num];
+            if (ovc.global == STATE_ACTIVE) {
+                oport_has_active_vc = true;
+            }
+        }
+
+        if (oport_has_active_vc) {
+            // First attempt the arbitration. Then, if the selected OVC is
+            // unfortunately the blocked one, disregard it.
+
+            size_t winner = round_robin_arbitration(
+                r->radix, oport, false,
+                r->sa_last_grant_output[oport], x_vectors, grant_vectors);
+            if (winner != static_cast<size_t>(-1)) {
+                // Now check if the selected OVC is fortunate.
+                assert(winner < vector_size);
+                size_t global_ivc = winner / r->radix;
+                int iport = global_ivc / r->vc_count;
+                int ivc_num = global_ivc % r->vc_count;
+
+                InputUnit::VC &ivc = r->input_units[iport].vcs[ivc_num];
+                OutputUnit::VC &ovc = r->output_units[oport].vcs[ivc.output_vc];
+
+                // If unfortunate, the 'speculative' grant turned out to be
+                // a miss. Turn off the grant bit back to false.
+                if (ovc.global != STATE_ACTIVE) {
+                    grant_vectors[winner] = false;
+                } else {
+                    // FIXME: Should this be outside of this else?
+                    r->sa_last_grant_output[oport] = winner;
+                }
+            }
+        }
+    }
+
+    // Step 3: Update states for the granted VAs.
+    int num_grant = 0;
+    for (size_t i = 0; i < vector_size; i++) {
+        if (grant_vectors[i]) {
+            size_t global_ivc = i / r->radix;
+            int oport = i % r->radix;
+            int iport = global_ivc / r->vc_count;
+            int ivc_num = global_ivc % r->vc_count;
+
+            // SA success!
+            InputUnit::VC &ivc = r->input_units[iport].vcs[ivc_num];
+            // ovc_num should be read from ivc.
+            OutputUnit::VC &ovc = r->output_units[oport].vcs[ivc.output_vc];
+
+            assert(ivc.global == STATE_ACTIVE);
+            assert(ovc.global == STATE_ACTIVE);
+            // Because sa_arbit_round_robin only selects input units that
+            // has flits in them, the input queue cannot be empty.
+            assert(!queue_empty(ivc.buf));
+
+            char s[IDSTRLEN];
+            debugf(r, "SA success for %s from iport %d to oport %d\n",
+                   flit_str(queue_front(ivc.buf), s), iport, oport);
+
+            // The flit leaves the buffer here.
+            Flit *flit = queue_front(ivc.buf);
+            queue_pop(ivc.buf);
+            assert(!ivc.st_ready);
+            ivc.st_ready = flit;
+
+            // Credit decrement.
+            debugf(r, "Credit decrement, credit=%d->%d (oport=%d)\n",
+                   ovc.credit_count, ovc.credit_count - 1, oport);
+            assert(ovc.credit_count > 0);
+            ovc.credit_count--;
+
+            // SA -> ?? transition
+            //
+            // Set the next stage according to the flit type and credit
+            // count.
+            //
+            // Note that switching state to CreditWait does NOT prevent the
+            // subsequent ST to happen. The flit that has succeeded SA on
+            // this cycle is transferred to ivc.st_ready, and that is the
+            // only thing that is visible to the ST stage.
+            if (flit->type == FLIT_TAIL) {
+                ovc.next_global = STATE_IDLE;
+                if (queue_empty(ivc.buf)) {
+                    ivc.next_global = STATE_IDLE;
+                    ivc.stage = PIPELINE_IDLE;
+                    // debugf(this, "SA: next state is Idle\n");
+                } else {
+                    ivc.next_global = STATE_ROUTING;
+                    ivc.stage = PIPELINE_RC;
+                    // debugf(this, "SA: next state is Routing\n");
+                }
+                r->reschedule_next_tick = true;
+            } else if (ovc.credit_count == 0) {
+                // debugf(r, "SA: switching to CW\n");
+                ivc.next_global = STATE_CREDWAIT;
+                ovc.next_global = STATE_CREDWAIT;
+                // debugf(this, "SA: next state is CreditWait\n");
+            } else {
+                ivc.next_global = STATE_ACTIVE;
+                ivc.stage = PIPELINE_SA;
+                // debugf(this, "SA: next state is Active\n");
+                r->reschedule_next_tick = true;
+            }
+            assert(ovc.credit_count >= 0);
+
+            num_grant++;
         }
     }
 }
@@ -1053,7 +1151,7 @@ void switch_traverse(Router *r)
 
             // CT stage: return credit to the upstream node.
             Channel *ich = r->input_channels[iport];
-            channel_put_credit(ich, (Credit){});
+            channel_put_credit(ich, (Credit){0 /* FIXME */});
             RouterPortPair src_pair = ich->conn.src;
             debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
                    src_pair.port);

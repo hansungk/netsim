@@ -16,6 +16,9 @@
 - Event-driven: show simulator does not progress further after
   deadlock
 
+* Questions
+- VC: increases switch input/output ports?
+
 * Latency model
 - "ready" bit?
   - Closely resembles HW implementation

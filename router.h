@@ -138,6 +138,7 @@ struct Flit {
 char *flit_str(const Flit *flit, char *s);
 
 struct Credit {
+    Credit(int vc) : vc_num(vc) {}
     long vc_num;
 };
 
@@ -198,7 +199,7 @@ struct InputUnit {
         enum GlobalState global = STATE_IDLE;
         enum GlobalState next_global = STATE_IDLE;
         int route_port = -1;
-        int output_vc = 0;
+        int output_vc = -1;
         enum PipelineStage stage = PIPELINE_IDLE;
         Flit **buf = NULL;
         Flit *st_ready = NULL;
@@ -216,7 +217,7 @@ struct OutputUnit {
         enum GlobalState global = STATE_IDLE;
         enum GlobalState next_global = STATE_IDLE;
         int input_port = -1;
-        int input_vc = 0;
+        int input_vc = -1;
         int credit_count;
         Credit *buf_credit = NULL;
     };
