@@ -272,6 +272,8 @@ struct Router {
     std::vector<OutputUnit> output_units; // output units
     struct Allocator {
     } alloc;
+    int src_last_grant_output; // for round-robin arbitration
+    int dst_last_grant_input; // for round-robin arbitration
     std::vector<int>
         va_last_grant_input; // for round-robin arbitration, for each input VC
     std::vector<int>

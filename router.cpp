@@ -210,10 +210,10 @@ Router::Router(Sim &sim, EventQueue *eq, Stat *st, Id id, int radix,
                long input_buf_size)
     : sim(sim), eventq(eq), stat(st), id(id), radix(radix), vc_count(vc_count),
       top_desc(td), traffic_desc(trd), rand_gen(rg), packet_len(packet_len),
-      input_buf_size(input_buf_size), va_last_grant_input(radix * vc_count, 0),
+      input_buf_size(input_buf_size), src_last_grant_output(0),
+      dst_last_grant_input(0), va_last_grant_input(radix * vc_count, 0),
       va_last_grant_output(radix * vc_count, 0),
-      sa_last_grant_input(radix * vc_count, 0),
-      sa_last_grant_output(radix, 0)
+      sa_last_grant_input(radix * vc_count, 0), sa_last_grant_output(radix, 0)
 {
     // Copy channel list
     input_channels = NULL;
@@ -242,10 +242,12 @@ Router::Router(Sim &sim, EventQueue *eq, Stat *st, Id id, int radix,
         assert(input_units.size() == 1);
         assert(output_units.size() == 1);
         // There are no route computation stages for terminal nodes, so set the
-        // routed ports for each IU/OU statically here.
+        // routed ports and allocated VCs for each IU/OU statically here.
         for (int i = 0; i < vc_count; i++) {
             input_units[0].vcs[i].route_port = TERMINAL_PORT;
+            input_units[0].vcs[i].output_vc = 0; // unnecessary?
             output_units[0].vcs[i].input_port = TERMINAL_PORT;
+            output_units[0].vcs[i].input_vc = 0; // unnnecessary
         }
     }
 }
@@ -495,27 +497,27 @@ void source_generate(Router *r)
     if (!queue_empty(r->source_queue)) {
         Flit *ready_flit = queue_front(r->source_queue);
 
-        int ovc_num = r->va_last_grant_input[TERMINAL_PORT /*FIXME*/];
+        int ovc_num = r->src_last_grant_output;
         if (ready_flit->type == FLIT_HEAD) {
             // Round-robin VC arbitration
-            ovc_num = (r->va_last_grant_input[TERMINAL_PORT /*FIXME*/] + 1) % r->vc_count;
+            ovc_num = (r->src_last_grant_output + 1) % r->vc_count;
             for (int i = 0; i < r->vc_count; i++) {
-                OutputUnit::VC &ovc = r->output_units[0].vcs[ovc_num];
+                OutputUnit::VC &ovc = r->output_units[TERMINAL_PORT].vcs[ovc_num];
                 // Select the first one that has credits.
                 if (ovc.credit_count > 0) {
-                    r->va_last_grant_input[TERMINAL_PORT /*FIXME*/] = ovc_num;
+                    r->src_last_grant_output = ovc_num;
                     break;
                 }
                 ovc_num = (ovc_num + 1) % r->vc_count;
             }
         }
 
-        OutputUnit::VC &ovc = r->output_units[0].vcs[ovc_num];
+        OutputUnit::VC &ovc = r->output_units[TERMINAL_PORT].vcs[ovc_num];
         if (ovc.credit_count > 0) {
             queue_pop(r->source_queue);
             // Make sure to mark the VC number in the flit.
             ready_flit->vc_num = ovc_num;
-            Channel *och = r->output_channels[0];
+            Channel *och = r->output_channels[TERMINAL_PORT];
             channel_put(och, ready_flit);
 
             debugf(r, "Source credit decrement, credit=%d->%d\n",
@@ -539,61 +541,81 @@ void source_generate(Router *r)
 
 void destination_consume(Router *r)
 {
-    // TODO: Important: always make sure that only VC0 is used for the channels that
-    // go into destination nodes.
-    InputUnit::VC *ivc = &r->input_units[TERMINAL_PORT].vcs[DESTINATION_VC];
+    // Round-robin input VC selection.  Destination node should never block, so
+    // keep searching for a non-empty input VC in the single cycle.
+    InputUnit::VC *ivc = NULL;
     char s[IDSTRLEN];
 
-    if (!queue_empty(ivc->buf)) {
-        Flit *flit = queue_front(ivc->buf);
-
-        if (flit->type == FLIT_HEAD) {
-            // First, check if this flit is correctly destined to this node.
-            assert(flit->route_info.dst == r->id.value);
-
-            // Record packet arrival time.
-            // debugf(r, "Finding packet ID=%ld,%ld\n", flit->packet_id.src,
-            // flit->packet_id.id);
-            auto f = r->stat->packet_ledger.find(flit->packet_id);
-            if (f == r->stat->packet_ledger.end()) {
-                printf("src=%ld, id=%ld not found\n", flit->packet_id.src, flit->packet_id.id);
-            }
-            assert(f != r->stat->packet_ledger.end() &&
-                   "Packet not recorded upon generation!");
-            f->second.arr = r->eventq->curr_time();
-            long arr = f->second.arr;
-            long gen = f->second.gen;
-            long latency = arr - gen;
-            // debugf(r, "Deleting packet ID=%ld,%ld\n", flit->packet_id.src,
-            // flit->packet_id.id);
-            r->stat->packet_ledger.erase(flit->packet_id);
-
-            r->stat->latency_sum += latency;
-            r->stat->packet_num++;
-
-            debugf(r, "Packet arrived: %s, latency=%ld (arr=%ld, gen=%ld). mapsize=%ld\n",
-                   flit_str(flit, s), latency, arr, gen, r->stat->packet_ledger.size());
+    bool has_nonempty_ivc = false;
+    int ivc_num = (r->dst_last_grant_input + 1) % r->vc_count;
+    for (int i = 0; i < r->vc_count; i++) {
+        ivc = &r->input_units[TERMINAL_PORT].vcs[ivc_num];
+        if (!queue_empty(ivc->buf)) {
+            has_nonempty_ivc = true;
+            r->dst_last_grant_input = ivc_num;
+            break;
         }
-
-        debugf(r, "Destination buf size=%zd\n", queue_len(ivc->buf));
-        debugf(r, "Flit arrived: %s\n", flit_str(flit, s));
-
-        r->flit_arrive_count++;
-        queue_pop(ivc->buf);
-        assert(queue_empty(ivc->buf));
-
-        Channel *ich = r->input_channels[0];
-        channel_put_credit(ich, (Credit){DESTINATION_VC /* FIXME */});
-
-        RouterPortPair src_pair = ich->conn.src;
-        debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
-               src_pair.port);
-
-        // Self-tick autonomously unless all input ports are empty.
-        r->reschedule_next_tick = true;
-
-        delete flit;
+        ivc_num = (ivc_num + 1) % r->vc_count;
     }
+    if (!has_nonempty_ivc) {
+        // Ideally, the destination node should have never even been scheduled
+        // in this case.
+        return;
+    }
+
+    assert(!queue_empty(ivc->buf));
+    Flit *flit = queue_front(ivc->buf);
+
+    if (flit->type == FLIT_HEAD) {
+        // First, check if this flit is correctly destined to this node.
+        assert(flit->route_info.dst == r->id.value);
+
+        // Record packet arrival time.
+        // debugf(r, "Finding packet ID=%ld,%ld\n", flit->packet_id.src,
+        // flit->packet_id.id);
+        auto f = r->stat->packet_ledger.find(flit->packet_id);
+        if (f == r->stat->packet_ledger.end()) {
+            printf("src=%ld, id=%ld not found\n", flit->packet_id.src,
+                   flit->packet_id.id);
+        }
+        assert(f != r->stat->packet_ledger.end() &&
+               "Packet not recorded upon generation!");
+        f->second.arr = r->eventq->curr_time();
+        long arr = f->second.arr;
+        long gen = f->second.gen;
+        long latency = arr - gen;
+        // debugf(r, "Deleting packet ID=%ld,%ld\n",
+        // flit->packet_id.src, flit->packet_id.id);
+        r->stat->packet_ledger.erase(flit->packet_id);
+
+        r->stat->latency_sum += latency;
+        r->stat->packet_num++;
+
+        debugf(r,
+               "Packet arrived: %s, latency=%ld (arr=%ld, gen=%ld). "
+               "mapsize=%ld\n",
+               flit_str(flit, s), latency, arr, gen,
+               r->stat->packet_ledger.size());
+    }
+
+    debugf(r, "Destination buf size=%zd\n", queue_len(ivc->buf));
+    debugf(r, "Flit arrived: %s\n", flit_str(flit, s));
+
+    r->flit_arrive_count++;
+    queue_pop(ivc->buf);
+    assert(queue_empty(ivc->buf));
+
+    Channel *ich = r->input_channels[TERMINAL_PORT];
+    channel_put_credit(ich, (Credit){ivc_num});
+
+    RouterPortPair src_pair = ich->conn.src;
+    debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
+           src_pair.port);
+
+    // Self-tick autonomously unless all input ports are empty.
+    r->reschedule_next_tick = true;
+
+    delete flit;
 }
 
 void fetch_flit(Router *r)
@@ -660,6 +682,13 @@ void credit_update(Router *r)
             if (!queue_empty(ovc.buf_credit)) {
                 debugf(r, "Credit update! credit=%d->%d (oport=%d)\n",
                        ovc.credit_count, ovc.credit_count + 1, oport);
+                assert(ovc.input_port != -1);
+                assert(ovc.input_vc != -1);
+
+                Credit c = queue_front(ovc.buf_credit);
+                // Did this credit arrive in the right VC?
+                assert(c.vc_num == ovc_num);
+
                 // Upon credit update, the input and output unit receiving this
                 // credit may or may not be in the CreditWait state.  If they
                 // are, make sure to switch them back to the active state so
@@ -670,7 +699,6 @@ void credit_update(Router *r)
                 // to the switch allocation.  However, this implementation seems
                 // to defeat the purpose of the CreditWait stage. This
                 // implementation is what I think of as a more natural one.
-                assert(ovc.input_port != -1); // XXX: redundant?
                 InputUnit::VC &ivc =
                     r->input_units[ovc.input_port].vcs[ovc.input_vc];
                 if (ovc.credit_count == 0) {
@@ -727,6 +755,8 @@ void route_compute(Router *r)
         }
     }
 }
+
+#if 0
 
 // This function expects the given output VC to be in the Idle state.
 int vc_arbit_round_robin(Router *r, int out_port)
@@ -788,6 +818,8 @@ int sa_arbit_round_robin(Router *r, int out_port)
     // Indicates that there was no request for this VC.
     return -1;
 }
+
+#endif
 
 static size_t alloc_vector_pos(size_t grant_size, size_t input_vc,
                                  size_t output_vc)
@@ -1049,7 +1081,7 @@ void switch_alloc(Router *r)
         }
     }
 
-    // Step 3: Update states for the granted VAs.
+    // Step 3: Update states for the granted SAs.
     int num_grant = 0;
     for (size_t i = 0; i < vector_size; i++) {
         if (grant_vectors[i]) {
@@ -1073,7 +1105,7 @@ void switch_alloc(Router *r)
             debugf(r, "SA success for %s from iport %d to oport %d\n",
                    flit_str(queue_front(ivc.buf), s), iport, oport);
 
-            // The flit leaves the buffer here.
+            // The flit leaves the input buffer here.
             Flit *flit = queue_front(ivc.buf);
             queue_pop(ivc.buf);
             assert(!ivc.st_ready);
@@ -1127,34 +1159,40 @@ void switch_alloc(Router *r)
 void switch_traverse(Router *r)
 {
     for (int iport = 0; iport < r->radix; iport++) {
-        InputUnit *iu = &r->input_units[iport];
-        InputUnit::VC *ivc = &iu->vcs[0 /*FIXME*/];
+        for (int ivc_num = 0; ivc_num < r->vc_count; ivc_num++) {
+            InputUnit::VC &ivc = r->input_units[iport].vcs[ivc_num];
 
-        if (ivc->st_ready) {
-            Flit *flit = ivc->st_ready;
-            ivc->st_ready = NULL;
+            if (ivc.st_ready) {
+                Flit *flit = ivc.st_ready;
+                ivc.st_ready = NULL;
 
-            // No output speedup: there is no need for an output buffer
-            // (Ch17.3).  Flits that exit the switch are directly placed on the
-            // channel.
-            Channel *och = r->output_channels[ivc->route_port];
-            channel_put(och, flit);
-            RouterPortPair dst_pair = och->conn.dst;
+                // Caution: be sure to update the VC field in the flit.
+                assert(flit->vc_num == ivc_num);
+                flit->vc_num = ivc.output_vc;
 
-            char s[IDSTRLEN], s2[IDSTRLEN];
-            debugf(r, "Switch traverse: %s sent to {%s, %d}\n",
-                   flit_str(flit, s), id_str(dst_pair.id, s2), dst_pair.port);
+                // No output speedup: there is no need for an output buffer
+                // (Ch17.3).  Flits that exit the switch are directly placed on
+                // the channel.
+                Channel *och = r->output_channels[ivc.route_port];
+                channel_put(och, flit);
+                RouterPortPair dst_pair = och->conn.dst;
 
-            // With output speedup:
-            // auto &ou = output_units[ivc->route_port];
-            // ou->buf.push_back(flit);
+                char s[IDSTRLEN], s2[IDSTRLEN];
+                debugf(r, "Switch traverse: %s sent to {%s, %d}\n",
+                       flit_str(flit, s), id_str(dst_pair.id, s2),
+                       dst_pair.port);
 
-            // CT stage: return credit to the upstream node.
-            Channel *ich = r->input_channels[iport];
-            channel_put_credit(ich, (Credit){0 /* FIXME */});
-            RouterPortPair src_pair = ich->conn.src;
-            debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
-                   src_pair.port);
+                // With output speedup:
+                // auto &ou = output_units[ivc.route_port];
+                // ou->buf.push_back(flit);
+
+                // CT stage: return credit to the upstream node.
+                Channel *ich = r->input_channels[iport];
+                channel_put_credit(ich, (Credit){ivc_num});
+                RouterPortPair src_pair = ich->conn.src;
+                debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
+                       src_pair.port);
+            }
         }
     }
 }
