@@ -210,8 +210,9 @@ Router::Router(Sim &sim, EventQueue *eq, Stat *st, Id id, int radix,
                long input_buf_size)
     : sim(sim), eventq(eq), stat(st), id(id), radix(radix), vc_count(vc_count),
       top_desc(td), traffic_desc(trd), rand_gen(rg), packet_len(packet_len),
-      input_buf_size(input_buf_size),
-      va_last_grant_output(radix, 0), sa_last_grant_output(radix, 0)
+      input_buf_size(input_buf_size), va_last_grant_input(radix, 0),
+      va_last_grant_output(radix, 0), sa_last_grant_input(radix, 0),
+      sa_last_grant_output(radix, 0)
 {
     // Copy channel list
     input_channels = NULL;
@@ -493,15 +494,15 @@ void source_generate(Router *r)
     if (!queue_empty(r->source_queue)) {
         Flit *ready_flit = queue_front(r->source_queue);
 
-        int ovc_num = r->va_last_grant_input;
+        int ovc_num = r->va_last_grant_input[TERMINAL_PORT /*FIXME*/];
         if (ready_flit->type == FLIT_HEAD) {
             // Round-robin VC arbitration
-            ovc_num = (r->va_last_grant_input + 1) % r->vc_count;
+            ovc_num = (r->va_last_grant_input[TERMINAL_PORT /*FIXME*/] + 1) % r->vc_count;
             for (int i = 0; i < r->vc_count; i++) {
                 OutputUnit::VC &ovc = r->output_units[0].vcs[ovc_num];
                 // Select the first one that has credits.
                 if (ovc.credit_count > 0) {
-                    r->va_last_grant_input = ovc_num;
+                    r->va_last_grant_input[TERMINAL_PORT /*FIXME*/] = ovc_num;
                     break;
                 }
                 ovc_num = (ovc_num + 1) % r->vc_count;

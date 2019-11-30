@@ -269,9 +269,15 @@ struct Router {
     Flit **source_queue;                  // source queue
     std::vector<InputUnit> input_units;   // input units
     std::vector<OutputUnit> output_units; // output units
-    int va_last_grant_input = 0;          // for round-robin arbitration
-    std::vector<int> va_last_grant_output; // for round-robin arbitration, for each output VC
-    std::vector<int> sa_last_grant_output;          // for round-robin arbitration
+
+    std::vector<int>
+        va_last_grant_input; // for round-robin arbitration, for each input VC
+    std::vector<int>
+        va_last_grant_output; // for round-robin arbitration, for each output VC
+    std::vector<int>
+        sa_last_grant_input; // for round-robin arbitration, for each input VC
+    std::vector<int>
+        sa_last_grant_output; // for round-robin arbitration, for each output VC
 };
 
 void router_print_state(Router *r);
