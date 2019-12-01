@@ -20,12 +20,14 @@ RandomGenerator::RandomGenerator(int terminal_count)
 
 void debugf(Router *r, const char *fmt, ...)
 {
-    char s[IDSTRLEN];
-    printf("[@%3ld] [%s] ", curr_time(r->eventq), id_str(r->id, s));
-    va_list args;
-    va_start(args, fmt);
-    vprintf(fmt, args);
-    va_end(args);
+    if (r->verbose) {
+        char s[IDSTRLEN];
+        printf("[@%3ld] [%s] ", curr_time(r->eventq), id_str(r->id, s));
+        va_list args;
+        va_start(args, fmt);
+        vprintf(fmt, args);
+        va_end(args);
+    }
 }
 
 Event tick_event_from_id(Id id)
@@ -41,6 +43,16 @@ Channel::Channel(EventQueue *eq, long dl, const Connection conn)
 
 Channel::~Channel()
 {
+    while (!queue_empty(buf)) {
+        TimedFlit front = queue_front(buf);
+        delete front.flit;
+        queue_pop(buf);
+    }
+    while (!buf_credit.empty()) {
+        TimedCredit front = buf_credit.front();
+        delete front.credit;
+        buf_credit.pop_front();
+    }
     queue_free(buf);
 }
 
@@ -173,7 +185,15 @@ InputUnit::VC::VC(int bufsize)
 
 InputUnit::VC::~VC()
 {
+    while (!queue_empty(buf)) {
+        Flit *flit = queue_front(buf);
+        delete flit;
+        queue_pop(buf);
+    }
     queue_free(buf);
+    if (st_ready) {
+        delete st_ready;
+    }
 }
 
 OutputUnit::OutputUnit(int vc_count, int bufsize)
@@ -186,23 +206,24 @@ OutputUnit::OutputUnit(int vc_count, int bufsize)
 
 OutputUnit::VC::VC(int bufsize) : credit_count(bufsize)
 {
-    buf_credit = NULL;
-    queue_init(buf_credit, bufsize * 2); // FIXME: unnecessarily big.
+    // buf_credit = NULL;
+    // queue_init(buf_credit, bufsize * 2); // FIXME: unnecessarily big.
 }
 
 OutputUnit::VC::~VC()
 {
-    queue_free(buf_credit);
+    // queue_free(buf_credit);
 }
 
-Router::Router(Sim &sim, EventQueue *eq, Stat *st, Id id, int radix,
-               int vc_count, TopoDesc td, TrafficDesc trd, RandomGenerator &rg,
-               long packet_len, Channel **in_chs, Channel **out_chs,
-               long input_buf_size)
-    : sim(sim), eventq(eq), stat(st), id(id), radix(radix), vc_count(vc_count),
-      top_desc(td), traffic_desc(trd), rand_gen(rg), packet_len(packet_len),
-      input_buf_size(input_buf_size), src_last_grant_output(0),
-      dst_last_grant_input(0), va_last_grant_input(radix * vc_count, 0),
+Router::Router(Sim &sim, EventQueue *eq, Stat *st, bool verbose, Id id,
+               int radix, int vc_count, TopoDesc td, TrafficDesc trd,
+               RandomGenerator &rg, long packet_len, Channel **in_chs,
+               Channel **out_chs, long input_buf_size)
+    : sim(sim), eventq(eq), stat(st), verbose(verbose), id(id), radix(radix),
+      vc_count(vc_count), top_desc(td), traffic_desc(trd), rand_gen(rg),
+      packet_len(packet_len), input_buf_size(input_buf_size),
+      src_last_grant_output(0), dst_last_grant_input(0),
+      va_last_grant_input(radix * vc_count, 0),
       va_last_grant_output(radix * vc_count, 0),
       sa_last_grant_input(radix * vc_count, 0), sa_last_grant_output(radix, 0)
 {
@@ -245,7 +266,14 @@ Router::Router(Sim &sim, EventQueue *eq, Stat *st, Id id, int radix,
 
 Router::~Router()
 {
-    if (source_queue) queue_free(source_queue);
+    if (source_queue) {
+        while (!queue_empty(source_queue)) {
+            Flit *flit = queue_front(source_queue);
+            delete flit;
+            queue_pop(source_queue);
+        }
+        queue_free(source_queue);
+    }
     arrfree(input_channels);
     arrfree(output_channels);
 }
@@ -443,7 +471,7 @@ void source_generate(Router *r)
             r->sg.flitnum++;
 
             // Set the time the next packet is generated.
-            r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len + 0;
+            r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len + 10;
             schedule(r->eventq, r->sg.next_packet_start,
                      tick_event_from_id(r->id));
 
@@ -452,12 +480,14 @@ void source_generate(Router *r)
             auto result = r->stat->packet_ledger.insert({flit->packet_id, ts});
             assert(result.second);
 
-            debugf(r, "Source route computation: %d -> %d : {",
-                   flit->route_info.src, flit->route_info.dst);
-            for (size_t i = 0; i < flit->route_info.path.size(); i++) {
-                printf("%d,", flit->route_info.path[i]);
+            if (r->verbose) {
+                debugf(r, "Source route computation: %d -> %d : {",
+                       flit->route_info.src, flit->route_info.dst);
+                for (size_t i = 0; i < flit->route_info.path.size(); i++) {
+                    printf("%d,", flit->route_info.path[i]);
+                }
+                printf("}\n");
             }
-            printf("}\n");
 
             r->sg.packet_finished = false;
         } else if (r->sg.flitnum == r->packet_len - 1) {
@@ -493,7 +523,7 @@ void source_generate(Router *r)
             debugf(r, "Yes, its HEAD\n");
             // Deadlock avoidance with datelines: always start at the VCs with
             // class 0.
-            int ovc_class = 0; /* always */
+            const int ovc_class = 0; /* always */
 
             // Round-robin VC arbitration
             int vc_per_class = (r->vc_count / r->vc_class_count);
@@ -673,10 +703,11 @@ void fetch_credit(Router *r)
             for (auto vc_num : credit->vc_nums) {
                 OutputUnit::VC &ovc = r->output_units[oport].vcs[vc_num];
                 // In any time, there should be at most 1 credit in the buffer.
-                assert(queue_empty(ovc.buf_credit));
-                queue_put(ovc.buf_credit, credit);
+                assert(!ovc.buf_credit);
+                ovc.buf_credit = true;
                 r->reschedule_next_tick = true;
             }
+            delete credit;
         }
     }
 }
@@ -687,7 +718,7 @@ void credit_update(Router *r)
         for (int ovc_num = 0; ovc_num < r->vc_count; ovc_num++) {
             OutputUnit::VC &ovc = r->output_units[oport].vcs[ovc_num];
 
-            if (!queue_empty(ovc.buf_credit)) {
+            if (ovc.buf_credit) {
                 debugf(r, "Credit update! credit=%d->%d (oport=%d)\n",
                        ovc.credit_count, ovc.credit_count + 1, oport);
                 assert(ovc.input_port != -1);
@@ -721,8 +752,9 @@ void credit_update(Router *r)
                 }
 
                 ovc.credit_count++;
-                queue_pop(ovc.buf_credit);
-                assert(queue_empty(ovc.buf_credit));
+                // queue_pop(ovc.buf_credit);
+                // assert(queue_empty(ovc.buf_credit));
+                ovc.buf_credit = false;
             } else {
                 // dbg() << "No credit update, oport=" << oport << std::endl;
             }

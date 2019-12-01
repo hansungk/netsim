@@ -4,14 +4,18 @@
 
 int main(int argc, char **argv) {
     int debug = 0;
+    bool verbose = false;
     for (int i = 0; i < argc; i++) {
-        if (!strcmp(argv[i], "-d"))
+        if (!strcmp(argv[i], "-d")) {
             debug = 1;
+        } else if (!strcmp(argv[i], "-v")) {
+            verbose = true;
+        }
     }
 
     Topology top = topology_torus(4, 2);
 
-    Sim sim{debug, top, 16, 16, 5, 4, 10};
+    Sim sim{verbose, debug, top, 16, 16, 5, 4, 10};
     // schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
     // schedule(&sim.eventq, 1, tick_event_from_id(src_id(1)));
     // schedule(&sim.eventq, 2, tick_event_from_id(src_id(2)));

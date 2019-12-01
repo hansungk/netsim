@@ -228,7 +228,7 @@ struct OutputUnit {
         int input_port = -1;
         int input_vc = -1;
         int credit_count;
-        Credit **buf_credit = NULL;
+        bool buf_credit = false;
     };
     std::vector<VC> vcs;
 };
@@ -247,14 +247,16 @@ struct RandomGenerator {
 /// destination node.
 struct Sim;
 struct Router {
-    Router(Sim &sim, EventQueue *eq, Stat *st, Id id, int radix, int vc_count,
-           TopoDesc td, TrafficDesc trd, RandomGenerator &rg, long packet_len,
-           Channel **in_chs, Channel **out_chs, long input_buf_size);
+    Router(Sim &sim, EventQueue *eq, Stat *st, bool verbose, Id id, int radix,
+           int vc_count, TopoDesc td, TrafficDesc trd, RandomGenerator &rg,
+           long packet_len, Channel **in_chs, Channel **out_chs,
+           long input_buf_size);
     ~Router();
 
     Sim &sim;           // FIXME: not pretty
     EventQueue *eventq; // reference to the simulator-global event queue
     Stat *stat;
+    bool verbose;
     Id id;                      // router ID
     int radix;                  // radix
     int vc_count;               // number of VCs per channel

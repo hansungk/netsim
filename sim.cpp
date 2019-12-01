@@ -4,11 +4,9 @@
 
 void print_conn(const char *name, Connection conn);
 
-Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
-         int radix, int vc_count, long input_buf_size)
-    : debug_mode(debug_mode),
-      topology(top),
-      traffic_desc(terminal_count),
+Sim::Sim(bool verbose_mode, int debug_mode, Topology top, int terminal_count,
+         int router_count, int radix, int vc_count, long input_buf_size)
+    : debug_mode(debug_mode), topology(top), traffic_desc(terminal_count),
       rand_gen(terminal_count)
 {
     // traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
@@ -62,12 +60,14 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
         arrput(src_out_chs, src_out_ch);
         arrput(dst_in_chs, dst_in_ch);
 
-        src_nodes.push_back(std::make_unique<Router>(*this,
-            &eventq, &stat, src_id(id), 1, vc_count, top.desc, traffic_desc, rand_gen,
-            packet_len, src_in_chs, src_out_chs, input_buf_size));
-        dst_nodes.push_back(std::make_unique<Router>(*this,
-            &eventq, &stat, dst_id(id), 1, vc_count, top.desc, traffic_desc, rand_gen,
-            packet_len, dst_in_chs, dst_out_chs, input_buf_size));
+        src_nodes.push_back(std::make_unique<Router>(
+            *this, &eventq, &stat, verbose_mode, src_id(id), 1, vc_count, top.desc,
+            traffic_desc, rand_gen, packet_len, src_in_chs, src_out_chs,
+            input_buf_size));
+        dst_nodes.push_back(std::make_unique<Router>(
+            *this, &eventq, &stat, verbose_mode, dst_id(id), 1, vc_count, top.desc,
+            traffic_desc, rand_gen, packet_len, dst_in_chs, dst_out_chs,
+            input_buf_size));
 
         arrfree(src_in_chs);
         arrfree(src_out_chs);
@@ -97,9 +97,10 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
             arrput(in_chs, in_ch);
         }
 
-        routers.push_back(std::make_unique<Router>(*this,
-            &eventq, &stat, rtr_id(id), radix, vc_count, top.desc, traffic_desc, rand_gen,
-            packet_len, in_chs, out_chs, input_buf_size));
+        routers.push_back(std::make_unique<Router>(
+            *this, &eventq, &stat, verbose_mode, rtr_id(id), radix, vc_count,
+            top.desc, traffic_desc, rand_gen, packet_len, in_chs, out_chs,
+            input_buf_size));
 
         arrfree(in_chs);
         arrfree(out_chs);
