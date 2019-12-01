@@ -427,15 +427,14 @@ void source_generate(Router *r)
                         packet_id, r->sg.flitnum};
 
         if (r->sg.packet_finished) {
+            // Head flit
+            //
             if (r->eventq->curr_time() != r->sg.next_packet_start) {
                 debugf(r,
                        "WARN: Head flit not generated at the scheduled "
                        "time=%ld!\n",
                        r->sg.next_packet_start);
             }
-
-            // Head flit
-            r->sg.packet_counter++;
 
             flit->type = FLIT_HEAD;
             flit->route_info.path = source_route_compute(
@@ -466,6 +465,7 @@ void source_generate(Router *r)
             flit->type = FLIT_TAIL;
             r->sg.flitnum = 0;
             r->sg.packet_finished = true;
+            r->sg.packet_counter++;
         } else {
             // Body flit
             r->sg.flitnum++;
@@ -524,8 +524,11 @@ void source_generate(Router *r)
 
             r->flit_depart_count++;
 
-            char s[IDSTRLEN];
-            debugf(r, "Flit sent via VC%d: %s\n", ovc_num, flit_str(ready_flit, s));
+            char s[IDSTRLEN], s2[IDSTRLEN];
+            auto dst_pair = och->conn.dst;
+            debugf(r, "Flit sent via VC%d: %s, to {%s, %d}\n", ovc_num,
+                   flit_str(ready_flit, s), id_str(dst_pair.id, s2),
+                   dst_pair.port);
 
             // Infinitely generate flits.
             // TODO: Set and control generation rate.

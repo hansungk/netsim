@@ -11,7 +11,7 @@ int main(int argc, char **argv) {
 
     Topology top = topology_torus(4, 2);
 
-    Sim sim{debug, top, 16, 16, 5, 2, 10};
+    Sim sim{debug, top, 16, 16, 5, 4, 10};
     // schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
     // schedule(&sim.eventq, 1, tick_event_from_id(src_id(1)));
     // schedule(&sim.eventq, 2, tick_event_from_id(src_id(2)));
