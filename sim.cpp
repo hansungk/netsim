@@ -11,11 +11,11 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
       traffic_desc(terminal_count),
       rand_gen(terminal_count)
 {
-    traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
-    traffic_desc.dests[0] = 2;
-    traffic_desc.dests[1] = 3;
-    traffic_desc.dests[2] = 0;
-    traffic_desc.dests[3] = 1;
+    // traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
+    // traffic_desc.dests[0] = 2;
+    // traffic_desc.dests[1] = 3;
+    // traffic_desc.dests[2] = 0;
+    // traffic_desc.dests[3] = 1;
     channel_delay = 1; /* FIXME hardcoded */
     packet_len = 4; /* FIXME hardcoded */
 

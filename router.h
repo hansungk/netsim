@@ -258,6 +258,7 @@ struct Router {
     Id id;                      // router ID
     int radix;                  // radix
     int vc_count;               // number of VCs per channel
+    int vc_class_count = 2;     // number of VC class for deadlock avoidance
     long flit_arrive_count = 0; // # of flits arrived for the destination node
     long flit_depart_count = 0; // # of flits departed for the destination node
     TopoDesc top_desc;

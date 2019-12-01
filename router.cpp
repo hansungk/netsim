@@ -414,7 +414,7 @@ void source_generate(Router *r)
 
         int dest = -1;
         if (r->traffic_desc.type == TRF_UNIFORM_RANDOM) {
-            dest = r->rand_gen.uni_dist(r->rand_gen.rd);
+            dest = r->rand_gen.uni_dist(r->rand_gen.def);
             debugf(r, "Uniform random: dest=%ld\n", dest);
         } else if (r->traffic_desc.type == TRF_DESIGNATED) {
             dest = r->traffic_desc.dests[r->id.value];
@@ -492,20 +492,21 @@ void source_generate(Router *r)
         if (ready_flit->type == FLIT_HEAD) {
             // Deadlock avoidance with datelines: always start at the VCs with
             // class 0.
-            // TODO: mulitple VCs per class.
-            ovc_num = 0;
+            int ovc_class = 0; /* always */
 
             // Round-robin VC arbitration
-            // ovc_num = (r->src_last_grant_output + 1) % r->vc_count;
-            // for (int i = 0; i < r->vc_count; i++) {
-            //     OutputUnit::VC &ovc = r->output_units[TERMINAL_PORT].vcs[ovc_num];
-            //     // Select the first one that has credits.
-            //     if (ovc.credit_count > 0) {
-            //         r->src_last_grant_output = ovc_num;
-            //         break;
-            //     }
-            //     ovc_num = (ovc_num + 1) % r->vc_count;
-            // }
+            int vc_per_class = (r->vc_count / r->vc_class_count);
+            int ovc_in_class = (r->src_last_grant_output + 1) % vc_per_class;
+            for (int i = 0; i < r->vc_class_count; i++) {
+                int ovc_num = ovc_class * vc_per_class + ovc_in_class;
+                OutputUnit::VC &ovc = r->output_units[TERMINAL_PORT].vcs[ovc_num];
+                // Select the first one that has credits.
+                if (ovc.credit_count > 0) {
+                    r->src_last_grant_output = ovc_num;
+                    break;
+                }
+                ovc_in_class = (ovc_in_class + 1) % vc_per_class;
+            }
         }
 
         OutputUnit::VC &ovc = r->output_units[TERMINAL_PORT].vcs[ovc_num];
@@ -910,24 +911,42 @@ void vc_alloc(Router *r)
 
                 // Dateline is between the router 3 and 0.
                 //
-                // Normally, only allocate VCs with the same number as IVC.
-                // Only when crossing the dateline, allocate VC with a
-                // higher number.
-                //
-                // TODO: multi-dimensional
-                int ivc_class = ivc_num;
-                int ovc_class = ivc_class;
-                if ((r->id.value == 3 && ivc.route_port == 2) ||
-                    (r->id.value == 0 && ivc.route_port == 1)) {
-                    assert(ivc_class == 0);
+                // If going to the same direction, only allocate VCs with the
+                // same number as IVC.  Whenever crossing the dateline,
+                // allocate VC with a higher number.
+                int vc_per_class = r->vc_count / r->vc_class_count;
+                int in_direction = (iport - 1) / 2;
+                int out_direction = (ivc.route_port - 1) / 2;
+                int ivc_class = ivc_num / vc_per_class;
+                int ovc_class =
+                    (iport != TERMINAL_PORT && in_direction == out_direction)
+                        ? ivc_class
+                        : 0;
+                int id_in_ring = torus_id_xyz_get(r->id.value, r->top_desc.k, out_direction);
+                if ((id_in_ring == (r->top_desc.k - 1) &&
+                     ivc.route_port == get_output_port(out_direction, 1)) ||
+                    (id_in_ring == 0 &&
+                     ivc.route_port == get_output_port(out_direction, 0))) {
+                    // If going out to the same direction as coming in, check
+                    // that IVC was being maintained as 0.
+                    if (iport != TERMINAL_PORT &&
+                        in_direction == out_direction) {
+                        assert(ivc_class == 0);
+                    }
                     ovc_class = 1;
                     debugf(r, "VA: crossing dateline.\n");
                 }
 
-                request_vectors[alloc_vector_pos(total_vc, global_ivc,
-                                                 global_ovc_base + ovc_class)] = true;
-                debugf(r, "VA: request from (iport=%d,VC=%d) -> (oport=%d,VC=%d)\n",
-                        iport, ivc_num, ivc.route_port, ovc_class);
+                for (int i = 0; i < vc_per_class; i++) {
+                    int ovc_num = ovc_class * vc_per_class + i;
+                    request_vectors[alloc_vector_pos(
+                        total_vc, global_ivc,
+                        global_ovc_base + ovc_num)] = true;
+                    debugf(r,
+                           "VA: request from (iport=%d,VC=%d) -> "
+                           "(oport=%d,VC=%d)\n",
+                           iport, ivc_num, ivc.route_port, ovc_num);
+                }
 
                 // For non-torus topologies:
                 // for (int i = 0; i < r->vc_count; i++) {
