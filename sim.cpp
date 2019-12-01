@@ -109,11 +109,19 @@ Sim::Sim(bool verbose_mode, int debug_mode, Topology top, int terminal_count,
 
 void sim_run_until(Sim *sim, long until)
 {
+    long last_print_cycle = 0;
+
     while (!eventq_empty(&sim->eventq)) {
         // Terminate simulation if the specified time is expired
-        if (0 <= until && until < next_time(&sim->eventq))
+        if (0 <= until && until < next_time(&sim->eventq)) {
             break;
+        }
         Event e = eventq_pop(&sim->eventq);
+        if (sim->eventq.curr_time() != last_print_cycle &&
+            sim->eventq.curr_time() % 100 == 0) {
+            printf("[@%3ld]\n", sim->eventq.curr_time());
+            last_print_cycle = sim->eventq.curr_time();
+        }
         sim_process(sim, e);
     }
 }
@@ -198,6 +206,8 @@ void sim_report(Sim *sim) {
         printf("[%s] ", id_str(dst->id, s));
         printf("# of flits arrived: %ld\n", dst->flit_arrive_count);
     }
+
+    printf("\n");
 
     float interval_avg = static_cast<float>(curr_time(&sim->eventq)) /
                          (static_cast<float>(sim->stat.packet_num) /

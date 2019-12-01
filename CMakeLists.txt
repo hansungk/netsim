@@ -30,7 +30,7 @@ endif()
 # target_link_libraries(netsim PRIVATE yaml)
 
 # Comment this out to disable AddressSanitizer.
-# target_compile_options(netsim PRIVATE -fsanitize=address,leak,undefined)
-# target_link_libraries(netsim PRIVATE -fsanitize=address,leak,undefined)
+target_compile_options(netsim PRIVATE -fsanitize=address,leak,undefined)
+target_link_libraries(netsim PRIVATE -fsanitize=address,leak,undefined)
 
 set (CMAKE_EXPORT_COMPILE_COMMANDS ON)

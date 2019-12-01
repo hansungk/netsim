@@ -18,9 +18,9 @@ int main(int argc, char **argv) {
         }
     }
 
-    Topology top = topology_torus(4, 2);
+    Topology top = topology_torus(2, 4);
 
-    Sim sim{verbose, debug, top, 16, 16, 5, 4, mean_interval, 10};
+    Sim sim{verbose, debug, top, 16, 16, 9, 8, mean_interval, 10};
     // schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
     // schedule(&sim.eventq, 1, tick_event_from_id(src_id(1)));
     // schedule(&sim.eventq, 2, tick_event_from_id(src_id(2)));
@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
         schedule(&sim.eventq, 0, tick_event_from_id(src_id(i)));
     }
 
-    sim_run(&sim, 100000);
+    sim_run(&sim, 10000);
 
     sim_report(&sim);
 

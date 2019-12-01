@@ -908,8 +908,10 @@ size_t round_robin_arbitration(size_t req_size, size_t grant_size, size_t which,
                                const std::vector<bool> &request_vectors,
                                std::vector<bool> &grant_vectors)
 {
+    size_t arbit_size = is_input_stage ? grant_size : req_size;
+
     // Clear the grant vector first.
-    for (size_t i = 0; i < req_size; i++) {
+    for (size_t i = 0; i < arbit_size; i++) {
         if (is_input_stage) {
             grant_vectors[alloc_vector_pos(grant_size, which, i)] = false;
         } else {
@@ -917,8 +919,8 @@ size_t round_robin_arbitration(size_t req_size, size_t grant_size, size_t which,
         }
     }
 
-    size_t candidate = (last_grant + 1) % req_size;
-    for (size_t i = 0; i < req_size; i++) {
+    size_t candidate = (last_grant + 1) % arbit_size;
+    for (size_t i = 0; i < arbit_size; i++) {
         size_t cand_pos;
         if (is_input_stage) {
             cand_pos = alloc_vector_pos(grant_size, which, candidate);
@@ -931,7 +933,7 @@ size_t round_robin_arbitration(size_t req_size, size_t grant_size, size_t which,
             return cand_pos;
         }
 
-        candidate = (candidate + 1) % req_size;
+        candidate = (candidate + 1) % arbit_size;
     }
 
     // Indicates that there was no request.
