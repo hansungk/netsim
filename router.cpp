@@ -33,23 +33,15 @@ Event tick_event_from_id(Id id)
     return (Event){id, router_tick};
 }
 
-Channel channel_create(EventQueue *eq, long dl, const Connection conn)
+Channel::Channel(EventQueue *eq, long dl, const Connection conn)
+    : conn(conn), eventq(eq), delay(dl), buf_credit()
 {
-    Channel ch;
-    ch.conn = conn;
-    ch.eventq = eq;
-    ch.delay = dl;
-    ch.buf = NULL;
-    ch.buf_credit = NULL;
-    queue_init(ch.buf, dl + CHANNEL_SLACK);
-    queue_init(ch.buf_credit, dl + CHANNEL_SLACK);
-    return ch;
+    queue_init(buf, dl + CHANNEL_SLACK);
 }
 
-void channel_destroy(Channel *ch)
+Channel::~Channel()
 {
-    queue_free(ch->buf);
-    queue_free(ch->buf_credit);
+    queue_free(buf);
 }
 
 void channel_put(Channel *ch, Flit *flit)
@@ -60,11 +52,10 @@ void channel_put(Channel *ch, Flit *flit)
     reschedule(ch->eventq, ch->delay, tick_event_from_id(ch->conn.dst.id));
 }
 
-void channel_put_credit(Channel *ch, Credit credit)
+void channel_put_credit(Channel *ch, Credit *credit)
 {
     TimedCredit tc = {curr_time(ch->eventq) + ch->delay, credit};
-    assert(!queue_full(ch->buf_credit));
-    queue_put(ch->buf_credit, tc);
+    ch->buf_credit.push_back(tc);
     reschedule(ch->eventq, ch->delay, tick_event_from_id(ch->conn.src.id));
 }
 
@@ -81,16 +72,16 @@ Flit *channel_get(Channel *ch)
     }
 }
 
-int channel_get_credit(Channel *ch, Credit *c)
+Credit *channel_get_credit(Channel *ch)
 {
-    TimedCredit front = queue_front(ch->buf_credit);
-    if (!queue_empty(ch->buf_credit) && curr_time(ch->eventq) >= front.time) {
+    TimedCredit front = ch->buf_credit.front();
+    if (!ch->buf_credit.empty() && curr_time(ch->eventq) >= front.time) {
         assert(curr_time(ch->eventq) == front.time && "stale flit!");
-        queue_pop(ch->buf_credit);
-        *c = front.credit;
-        return 1;
+        Credit *credit = front.credit;
+        ch->buf_credit.pop_front();
+        return credit;
     } else {
-        return 0;
+        return NULL;
     }
 }
 
@@ -499,17 +490,22 @@ void source_generate(Router *r)
 
         int ovc_num = r->src_last_grant_output;
         if (ready_flit->type == FLIT_HEAD) {
+            // Deadlock avoidance with datelines: always start at the VCs with
+            // class 0.
+            // TODO: mulitple VCs per class.
+            ovc_num = 0;
+
             // Round-robin VC arbitration
-            ovc_num = (r->src_last_grant_output + 1) % r->vc_count;
-            for (int i = 0; i < r->vc_count; i++) {
-                OutputUnit::VC &ovc = r->output_units[TERMINAL_PORT].vcs[ovc_num];
-                // Select the first one that has credits.
-                if (ovc.credit_count > 0) {
-                    r->src_last_grant_output = ovc_num;
-                    break;
-                }
-                ovc_num = (ovc_num + 1) % r->vc_count;
-            }
+            // ovc_num = (r->src_last_grant_output + 1) % r->vc_count;
+            // for (int i = 0; i < r->vc_count; i++) {
+            //     OutputUnit::VC &ovc = r->output_units[TERMINAL_PORT].vcs[ovc_num];
+            //     // Select the first one that has credits.
+            //     if (ovc.credit_count > 0) {
+            //         r->src_last_grant_output = ovc_num;
+            //         break;
+            //     }
+            //     ovc_num = (ovc_num + 1) % r->vc_count;
+            // }
         }
 
         OutputUnit::VC &ovc = r->output_units[TERMINAL_PORT].vcs[ovc_num];
@@ -528,7 +524,7 @@ void source_generate(Router *r)
             r->flit_depart_count++;
 
             char s[IDSTRLEN];
-            debugf(r, "Flit sent: %s\n", flit_str(ready_flit, s));
+            debugf(r, "Flit sent via VC%d: %s\n", ovc_num, flit_str(ready_flit, s));
 
             // Infinitely generate flits.
             // TODO: Set and control generation rate.
@@ -544,7 +540,7 @@ void destination_consume(Router *r)
     // Round-robin input VC selection.  Destination node should never block, so
     // keep searching for a non-empty input VC in the single cycle.
     InputUnit::VC *ivc = NULL;
-    char s[IDSTRLEN];
+    char s[IDSTRLEN], s2[IDSTRLEN];
 
     bool has_nonempty_ivc = false;
     int ivc_num = (r->dst_last_grant_input + 1) % r->vc_count;
@@ -599,18 +595,23 @@ void destination_consume(Router *r)
     }
 
     debugf(r, "Destination buf size=%zd\n", queue_len(ivc->buf));
-    debugf(r, "Flit arrived: %s\n", flit_str(flit, s));
+    debugf(r, "Flit arrived via VC%d: %s\n", ivc_num, flit_str(flit, s));
 
     r->flit_arrive_count++;
     queue_pop(ivc->buf);
     assert(queue_empty(ivc->buf));
 
     Channel *ich = r->input_channels[TERMINAL_PORT];
-    channel_put_credit(ich, (Credit){ivc_num});
+    std::vector<long> vc_nums{ivc_num};
 
+    // FIXME?
+    Credit *credit = new Credit{vc_nums};
+    channel_put_credit(ich, credit);
     RouterPortPair src_pair = ich->conn.src;
-    debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
-           src_pair.port);
+    RouterPortPair dst_pair = ich->conn.dst;
+    debugf(r, "Credit sent via VC%d from {%s, %d} to {%s, %d}\n", ivc_num,
+           id_str(dst_pair.id, s), dst_pair.port,
+           id_str(src_pair.id, s2), src_pair.port);
 
     // Self-tick autonomously unless all input ports are empty.
     r->reschedule_next_tick = true;
@@ -630,8 +631,9 @@ void fetch_flit(Router *r)
         InputUnit::VC &ivc = r->input_units[iport].vcs[flit->vc_num];
 
         char s[IDSTRLEN];
-        debugf(r, "Fetched flit %s, buf[%d].size()=%zd\n", flit_str(flit, s),
-               iport, queue_len(ivc.buf));
+        debugf(r, "Fetched flit %s via VC%d, buf[%d][%d].size()=%zd\n",
+               flit_str(flit, s), flit->vc_num, iport, flit->vc_num,
+               queue_len(ivc.buf));
 
         // If the buffer was empty, this is the only place to kickstart the
         // pipeline.
@@ -660,15 +662,16 @@ void fetch_credit(Router *r)
 {
     for (int oport = 0; oport < r->radix; oport++) {
         Channel *och = r->output_channels[oport];
-        Credit c{0 /* overwritten */};
-        int got = channel_get_credit(och, &c);
-        if (got) {
-            OutputUnit::VC &ovc = r->output_units[oport].vcs[c.vc_num];
+        Credit *credit = channel_get_credit(och);
+        if (credit) {
             debugf(r, "Fetched credit, oport=%d\n", oport);
-            // In any time, there should be at most 1 credit in the buffer.
-            assert(queue_empty(ovc.buf_credit));
-            queue_put(ovc.buf_credit, c);
-            r->reschedule_next_tick = true;
+            for (auto vc_num : credit->vc_nums) {
+                OutputUnit::VC &ovc = r->output_units[oport].vcs[vc_num];
+                // In any time, there should be at most 1 credit in the buffer.
+                assert(queue_empty(ovc.buf_credit));
+                queue_put(ovc.buf_credit, credit);
+                r->reschedule_next_tick = true;
+            }
         }
     }
 }
@@ -684,10 +687,6 @@ void credit_update(Router *r)
                        ovc.credit_count, ovc.credit_count + 1, oport);
                 assert(ovc.input_port != -1);
                 assert(ovc.input_vc != -1);
-
-                Credit c = queue_front(ovc.buf_credit);
-                // Did this credit arrive in the right VC?
-                assert(c.vc_num == ovc_num);
 
                 // Upon credit update, the input and output unit receiving this
                 // credit may or may not be in the CreditWait state.  If they
@@ -904,11 +903,38 @@ void vc_alloc(Router *r)
                 assert(global_ivc < total_vc);
                 assert(global_ovc_base < total_vc);
                 // Assert request for all output VCs of the routed oport.
-                for (int i = 0; i < r->vc_count; i++) {
-                    request_vectors[alloc_vector_pos(total_vc, global_ivc,
-                                                     global_ovc_base + i)] =
-                    true;
+
+                //
+                // Deadlock avoidance: Datelines.
+                //
+
+                // Dateline is between the router 3 and 0.
+                //
+                // Normally, only allocate VCs with the same number as IVC.
+                // Only when crossing the dateline, allocate VC with a
+                // higher number.
+                //
+                // TODO: multi-dimensional
+                int ivc_class = ivc_num;
+                int ovc_class = ivc_class;
+                if ((r->id.value == 3 && ivc.route_port == 2) ||
+                    (r->id.value == 0 && ivc.route_port == 1)) {
+                    assert(ivc_class == 0);
+                    ovc_class = 1;
+                    debugf(r, "VA: crossing dateline.\n");
                 }
+
+                request_vectors[alloc_vector_pos(total_vc, global_ivc,
+                                                 global_ovc_base + ovc_class)] = true;
+                debugf(r, "VA: request from (iport=%d,VC=%d) -> (oport=%d,VC=%d)\n",
+                        iport, ivc_num, ivc.route_port, ovc_class);
+
+                // For non-torus topologies:
+                // for (int i = 0; i < r->vc_count; i++) {
+                //     request_vectors[alloc_vector_pos(total_vc, global_ivc,
+                //                                      global_ovc_base + i)] =
+                //     true;
+                // }
             }
         }
     }
@@ -919,7 +945,7 @@ void vc_alloc(Router *r)
             total_vc, total_vc, global_ivc, true,
             r->va_last_grant_input[global_ivc], request_vectors, x_vectors);
         if (winner != static_cast<size_t>(-1)) {
-            r->va_last_grant_input[global_ivc] = (winner / total_vc);
+            r->va_last_grant_input[global_ivc] = (winner % total_vc);
         }
     }
 
@@ -959,8 +985,8 @@ void vc_alloc(Router *r)
             assert(ivc.route_port == oport);
 
             char s[IDSTRLEN];
-            debugf(r, "VA: success for %s from iport %d to oport %d\n",
-                   flit_str(queue_front(ivc.buf), s), iport, oport);
+            debugf(r, "VA: success for %s from (iport=%d,VC=%d) to (oport=%d,VC=%d)\n",
+                   flit_str(queue_front(ivc.buf), s), iport, ivc_num, oport, ovc_num);
 
             // We now have the VC, but we cannot proceed to the SA stage
             // if there is no credit.
@@ -985,7 +1011,7 @@ void vc_alloc(Router *r)
         }
     }
 
-    debugf(r, "VA: granted to %d input VCs.\n", num_grant);
+    // debugf(r, "VA: granted to %d input VCs.\n", num_grant);
 }
 
 // Switch allocation.
@@ -1037,7 +1063,7 @@ void switch_alloc(Router *r)
             total_vc, r->radix, global_ivc, true,
             r->sa_last_grant_input[global_ivc], request_vectors, x_vectors);
         if (winner != static_cast<size_t>(-1)) {
-            r->sa_last_grant_input[global_ivc] = (winner / r->radix);
+            r->sa_last_grant_input[global_ivc] = (winner % r->radix);
         }
     }
 
@@ -1076,6 +1102,7 @@ void switch_alloc(Router *r)
                 // a miss. Turn off the grant bit back to false.
                 if (ovc.global != STATE_ACTIVE) {
                     grant_vectors[winner] = false;
+                    debugf(r, "SA: input arbitration picked a block OVC\n");
                 } else {
                     // FIXME: Should this be outside of this else?
                     r->sa_last_grant_output[oport] = (winner / r->radix);
@@ -1105,8 +1132,11 @@ void switch_alloc(Router *r)
             assert(!queue_empty(ivc.buf));
 
             char s[IDSTRLEN];
-            debugf(r, "SA success for %s from iport %d to oport %d\n",
-                   flit_str(queue_front(ivc.buf), s), iport, oport);
+            debugf(r,
+                   "SA: success for %s from (iport=%d,VC=%d) to (oport = % d, "
+                   "VC = % d)\n",
+                   flit_str(queue_front(ivc.buf), s), iport, ivc_num, oport,
+                   ivc.output_vc);
 
             // The flit leaves the input buffer here.
             Flit *flit = queue_front(ivc.buf);
@@ -1161,7 +1191,10 @@ void switch_alloc(Router *r)
 
 void switch_traverse(Router *r)
 {
+    char s[IDSTRLEN], s2[IDSTRLEN], s3[IDSTRLEN];
+
     for (int iport = 0; iport < r->radix; iport++) {
+        std::vector<long> vc_nums;
         for (int ivc_num = 0; ivc_num < r->vc_count; ivc_num++) {
             InputUnit::VC &ivc = r->input_units[iport].vcs[ivc_num];
 
@@ -1178,23 +1211,38 @@ void switch_traverse(Router *r)
                 // the channel.
                 Channel *och = r->output_channels[ivc.route_port];
                 channel_put(och, flit);
+                RouterPortPair src_pair = och->conn.src;
                 RouterPortPair dst_pair = och->conn.dst;
 
-                char s[IDSTRLEN], s2[IDSTRLEN];
-                debugf(r, "Switch traverse: %s sent to {%s, %d}\n",
-                       flit_str(flit, s), id_str(dst_pair.id, s2),
-                       dst_pair.port);
+                debugf(
+                    r,
+                    "Switch traverse: %s sent via VC%d from {%s, %d} to {%s, "
+                    "%d}\n",
+                    flit_str(flit, s), ivc.output_vc, id_str(src_pair.id, s2),
+                    src_pair.port, id_str(dst_pair.id, s3), dst_pair.port);
 
                 // With output speedup:
                 // auto &ou = output_units[ivc.route_port];
                 // ou->buf.push_back(flit);
 
-                // CT stage: return credit to the upstream node.
-                Channel *ich = r->input_channels[iport];
-                channel_put_credit(ich, (Credit){ivc_num});
-                RouterPortPair src_pair = ich->conn.src;
-                debugf(r, "Credit sent to {%s, %d}\n", id_str(src_pair.id, s),
-                       src_pair.port);
+                vc_nums.push_back(ivc_num);
+            }
+        }
+
+        if (!vc_nums.empty()) {
+            // CT stage: return credit to the upstream node.
+            // Caution: do this once per input port.
+            Channel *ich = r->input_channels[iport];
+            // FIXME?
+            Credit *credit = new Credit{vc_nums};
+            channel_put_credit(ich, credit);
+            RouterPortPair credit_src_pair = ich->conn.src;
+            RouterPortPair credit_dst_pair = ich->conn.dst;
+            for (auto vc_num : vc_nums) {
+                debugf(r, "Credit sent via VC%d from {%s, %d} to {%s, %d}\n",
+                       vc_num, id_str(credit_dst_pair.id, s),
+                       credit_dst_pair.port, id_str(credit_src_pair.id, s2),
+                       credit_src_pair.port);
             }
         }
     }

@@ -27,7 +27,7 @@ typedef struct Sim {
     long channel_delay;
     long packet_len;    // length of a packet in flits
     ChannelMap *channel_map;
-    Channel *channels;
+    std::vector<Channel> channels;
     std::vector<std::unique_ptr<Router>> routers;
     std::vector<std::unique_ptr<Router>> src_nodes;
     std::vector<std::unique_ptr<Router>> dst_nodes;

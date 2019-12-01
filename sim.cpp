@@ -23,17 +23,16 @@ Sim::Sim(int debug_mode, Topology top, int terminal_count, int router_count,
     eventq_init(&eventq);
 
     // Initialize channels
-    channels = NULL;
+    channels.reserve(hmlen(top.forward_hash));
     for (ptrdiff_t i = 0; i < hmlen(top.forward_hash); i++) {
         Connection conn = top.forward_hash[i].value;
         // printf("Found connection: %d.%d.%d -> %d.%d.%d\n", conn.src.id.type, conn.src.id.value,
         //        conn.src.port, conn.dst.id.type, conn.dst.id.value, conn.dst.port);
-        Channel ch = channel_create(&eventq, channel_delay, conn);
-        arrput(channels, ch);
+        channels.emplace_back(&eventq, channel_delay, conn);
         // channels.emplace_back(&eventq, channel_delay, conn);
     }
     channel_map = NULL;
-    for (long i = 0; i < arrlen(channels); i++) {
+    for (size_t i = 0; i < channels.size(); i++) {
         Channel *ch = &channels[i];
         hmput(channel_map, ch->conn.uniq, ch);
     }
@@ -221,9 +220,6 @@ void sim_process(Sim *sim, Event e)
 void sim_destroy(Sim *sim)
 {
     hmfree(sim->channel_map);
-    for (long i = 0; i < arrlen(sim->channels); i++)
-        channel_destroy(&sim->channels[i]);
-    arrfree(sim->channels);
 
     // Stat
     eventq_destroy(&sim->eventq);

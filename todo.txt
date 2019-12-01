@@ -1,23 +1,21 @@
 -*- org -*-
 
-* BUGS
-- A simple tornado traffic on a 1-D ring stalls simulation with
-  input_buf_size >= 8. --> DEADLOCK??
-
 * TODO
-- Infinite source queue and accurate terminal instrumentation
-- Latency vs. offerred traffic curve
-  - For torus: Figure 23.4
-- Wormhole -> VC flow control
 - Deadlock avoidance
   - Dedicated/free VCs
+- Latency vs. offerred traffic curve
+  - For torus: Figure 23.4
+- Benefits of VC-based flow control compared to wormhole
+- Parking lot problem
+- Load imbalancing of XY-routing
+- Age-based priority?
 
 * Showcasing
 - Event-driven: show simulator does not progress further after
   deadlock
 
 * Questions
-- VC: increases switch input/output ports?
+- VC: increases switch input/output ports? => This is what input speedup is.
 
 * Latency model
 - "ready" bit?

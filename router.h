@@ -6,6 +6,7 @@
 #include <vector>
 #include <map>
 #include <random>
+#include <deque>
 
 // Port that is always connected to a terminal.
 #define TERMINAL_PORT 0
@@ -138,8 +139,13 @@ struct Flit {
 char *flit_str(const Flit *flit, char *s);
 
 struct Credit {
-    Credit(int vc) : vc_num(vc) {}
-    long vc_num;
+    Credit() {}
+    Credit(const std::vector<long> &vc_nums) : vc_nums(vc_nums) {}
+    // There are cases where each of multiple input VCs of a the downstream
+    // buffer send a credit over the same physical channel.  For these cases,
+    // encode a list of VCs that sent the credit.
+    std::vector<long> vc_nums;
+    Id id; // for debugging purposes
 };
 
 typedef struct TimedFlit {
@@ -149,22 +155,25 @@ typedef struct TimedFlit {
 
 typedef struct TimedCredit {
     long time;
-    Credit credit;
+    Credit *credit;
 } TimedCredit;
 
 typedef struct Channel {
+    Channel(EventQueue *eq, long dl, const Connection conn);
+    ~Channel();
+
     Connection conn;
     EventQueue *eventq;
     long delay;
-    TimedFlit *buf;
-    TimedCredit *buf_credit;
+    TimedFlit *buf = NULL;
+    std::deque<TimedCredit> buf_credit;
 } Channel;
 
 Channel channel_create(EventQueue *eq, long dl, const Connection conn);
 void channel_put(Channel *ch, Flit *flit);
-void channel_put_credit(Channel *ch, Credit credit);
+void channel_put_credit(Channel *ch, Credit *credit);
 Flit *channel_get(Channel *ch);
-int channel_get_credit(Channel *ch, Credit *c);
+Credit *channel_get_credit(Channel *ch);
 void channel_destroy(Channel *ch);
 
 // Pipeline stages.
@@ -219,7 +228,7 @@ struct OutputUnit {
         int input_port = -1;
         int input_vc = -1;
         int credit_count;
-        Credit *buf_credit = NULL;
+        Credit **buf_credit = NULL;
     };
     std::vector<VC> vcs;
 };
