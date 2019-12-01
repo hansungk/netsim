@@ -15,7 +15,7 @@
 // Single VC used in the terminal-router channel.
 #define TERMINAL_VC 0
 // Maximum supported torus dimension.
-#define NORMALLEN 10
+#define NORMALLEN 128
 // Excess storage in channel to prevent overrun.
 #define CHANNEL_SLACK 4
 
@@ -39,7 +39,9 @@ struct Stat {
     long double_tick_count = 0;
     std::map<PacketId, PacketTimestamp> packet_ledger;
     long latency_sum = 0;
-    long packet_num = 0;
+    long packet_depart_count = 0;
+    long packet_arrive_count = 0;
+    long hop_count_sum = 0;
 };
 
 typedef struct RouterPortPair {
@@ -264,7 +266,7 @@ struct Router {
     Id id;                      // router ID
     int radix;                  // radix
     int vc_count;               // number of VCs per channel
-    int vc_class_count = 2;     // number of VC class for deadlock avoidance
+    int vc_class_count;         // number of VC class for deadlock avoidance
     long flit_arrive_count = 0; // # of flits arrived for the destination node
     long flit_depart_count = 0; // # of flits departed for the destination node
     TopoDesc top_desc;

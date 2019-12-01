@@ -9,11 +9,12 @@ Sim::Sim(bool verbose_mode, int debug_mode, Topology top, int terminal_count,
     : debug_mode(debug_mode), topology(top), traffic_desc(terminal_count),
       rand_gen(terminal_count, mean_interval)
 {
-    // traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
-    // traffic_desc.dests[0] = 2;
-    // traffic_desc.dests[1] = 3;
-    // traffic_desc.dests[2] = 0;
-    // traffic_desc.dests[3] = 1;
+    traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
+    traffic_desc.dests[0] = 2;
+    traffic_desc.dests[1] = 2;
+    traffic_desc.dests[2] = 0;
+    traffic_desc.dests[3] = 1;
+
     channel_delay = 1; /* FIXME hardcoded */
     packet_len = 4; /* FIXME hardcoded */
 
@@ -188,10 +189,17 @@ void sim_run(Sim *sim, long until)
 void sim_report(Sim *sim) {
     char s[IDSTRLEN];
 
+    // Sample router for fetching topology info.
+    assert(!sim->routers.empty());
+    Router &r = *sim->routers[0].get();
+
     printf("\n");
     printf("==== SIMULATION RESULT ====\n");
 
-    printf("# of ticks: %ld\n", curr_time(&sim->eventq));
+    printf("Topology: %d-ary %d-torus\n", sim->topology.desc.k, sim->topology.desc.r); 
+    printf("Radix: %d\n", r.radix); 
+    printf("# of VCs per channel: %d\n", r.vc_count); 
+    printf("# of total cycle: %ld\n", curr_time(&sim->eventq));
     printf("# of double ticks: %ld\n", sim->stat.double_tick_count);
     printf("\n");
 
@@ -210,11 +218,14 @@ void sim_report(Sim *sim) {
     printf("\n");
 
     float interval_avg = static_cast<float>(curr_time(&sim->eventq)) /
-                         (static_cast<float>(sim->stat.packet_num) /
+                         (static_cast<float>(sim->stat.packet_depart_count) /
                           static_cast<float>(sim->src_nodes.size()));
     printf("Average interval: %lf cycles\n", interval_avg);
+    float hop_count_avg = static_cast<float>(sim->stat.hop_count_sum) /
+                          static_cast<float>(sim->stat.packet_depart_count);
+    printf("Average hop count: %lf hops\n", hop_count_avg);
     float latency_avg = static_cast<float>(sim->stat.latency_sum) /
-                        static_cast<float>(sim->stat.packet_num);
+                        static_cast<float>(sim->stat.packet_arrive_count);
     printf("Average latency: %lf\n", latency_avg);
 }
 

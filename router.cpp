@@ -40,6 +40,16 @@ void debugf(Router *r, const char *fmt, ...)
     }
 }
 
+void warnf(Router *r, const char *fmt, ...)
+{
+    char s[IDSTRLEN];
+    printf("[@%3ld] [%s] ", curr_time(r->eventq), id_str(r->id, s));
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+
 Event tick_event_from_id(Id id)
 {
     return (Event){id, router_tick};
@@ -237,6 +247,9 @@ Router::Router(Sim &sim, EventQueue *eq, Stat *st, bool verbose, Id id,
       va_last_grant_output(radix * vc_count, 0),
       sa_last_grant_input(radix * vc_count, 0), sa_last_grant_output(radix, 0)
 {
+    // Can only segregate VCs into classes if we do have multiple VCs.
+    vc_class_count = (vc_count > 1) ? 2 : 1;
+
     // Copy channel list
     input_channels = NULL;
     output_channels = NULL;
@@ -332,7 +345,7 @@ static void source_route_compute_dimension(Router *r, TopoDesc td,
 
 
         // FIXME
-        to_larger = 1;
+        // to_larger = 1;
 
         for (int i = 0; i < cw_dist; i++) {
             path.push_back(get_output_port(direction, to_larger));
@@ -474,27 +487,44 @@ void source_generate(Router *r)
             // Head flit
             //
             if (r->eventq->curr_time() != r->sg.next_packet_start) {
-                debugf(r,
-                       "WARN: Head flit not generated at the scheduled "
-                       "time=%ld!\n",
-                       r->sg.next_packet_start);
+                warnf(r,
+                      "WARN: Head flit not generated at the scheduled "
+                      "time=%ld!\n",
+                      r->sg.next_packet_start);
             }
+
+            //
+            // Source-side route computation.
+            //
 
             flit->type = FLIT_HEAD;
             flit->route_info.path = source_route_compute(
                 r, r->top_desc, flit->route_info.src, flit->route_info.dst);
             assert(flit->route_info.path.size() > 0);
+
+            // Hop count: exclude the last hop to terminal.
+            r->stat->hop_count_sum += (flit->route_info.path.size() - 1);
+            r->stat->packet_depart_count++;
+
+            if (r->verbose) {
+                debugf(r, "Source route computation: %d -> %d : {",
+                       flit->route_info.src, flit->route_info.dst);
+                for (size_t i = 0; i < flit->route_info.path.size(); i++) {
+                    printf("%d,", flit->route_info.path[i]);
+                }
+                printf("}\n");
+            }
+
             r->sg.flitnum++;
 
             // Set the time the next packet is generated.
             // r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len + 10;
-            double old = r->sg.next_packet_start_frac;
             r->sg.next_packet_start_frac +=
                 static_cast<double>(r->packet_len) +
                 r->rand_gen.exp_dist(r->rand_gen.rd);
-            debugf(r, "next_packet_start_frac=%lf->%lf\n", old, r->sg.next_packet_start_frac);
+            // debugf(r, "next_packet_start_frac=%lf->%lf\n", old, r->sg.next_packet_start_frac);
             r->sg.next_packet_start = std::ceil(r->sg.next_packet_start_frac);
-            debugf(r, "scheduling at %ld\n", r->sg.next_packet_start);
+            // debugf(r, "scheduling at %ld\n", r->sg.next_packet_start);
             // If the interval was so short that the rounded result remains the
             // same, manually one-up it.
             // if (r->sg.next_packet_start == r->eventq->curr_time()) {
@@ -507,15 +537,6 @@ void source_generate(Router *r)
             PacketTimestamp ts{.gen = r->eventq->curr_time(), .arr = -1};
             auto result = r->stat->packet_ledger.insert({flit->packet_id, ts});
             assert(result.second);
-
-            if (r->verbose) {
-                debugf(r, "Source route computation: %d -> %d : {",
-                       flit->route_info.src, flit->route_info.dst);
-                for (size_t i = 0; i < flit->route_info.path.size(); i++) {
-                    printf("%d,", flit->route_info.path[i]);
-                }
-                printf("}\n");
-            }
 
             r->sg.packet_finished = false;
         } else if (r->sg.flitnum == r->packet_len - 1) {
@@ -539,7 +560,7 @@ void source_generate(Router *r)
         debugf(r, "Flit generated: %s\n", flit_str(flit, s));
         debugf(r, "Source queue len=%ld\n", queue_len(r->source_queue));
     } else if (queue_full(r->source_queue)) {
-        debugf(r, "WARN: source queue full!\n");
+        warnf(r, "WARN: source queue full!\n");
     }
 
     // After exiting the source queue.
@@ -548,7 +569,6 @@ void source_generate(Router *r)
 
         int ovc_num = r->src_last_grant_output;
         if (ready_flit->type == FLIT_HEAD) {
-            debugf(r, "Yes, its HEAD\n");
             // Deadlock avoidance with datelines: always start at the VCs with
             // class 0.
             const int ovc_class = 0; /* always */
@@ -648,7 +668,7 @@ void destination_consume(Router *r)
         r->stat->packet_ledger.erase(flit->packet_id);
 
         r->stat->latency_sum += latency;
-        r->stat->packet_num++;
+        r->stat->packet_arrive_count++;
 
         debugf(r,
                "Packet arrived: %s, latency=%ld (arr=%ld, gen=%ld). "
@@ -989,18 +1009,20 @@ void vc_alloc(Router *r)
                         ? ivc_class
                         : 0;
                 int id_in_ring = torus_id_xyz_get(r->id.value, r->top_desc.k, out_direction);
-                if ((id_in_ring == (r->top_desc.k - 1) &&
-                     ivc.route_port == get_output_port(out_direction, 1)) ||
-                    (id_in_ring == 0 &&
-                     ivc.route_port == get_output_port(out_direction, 0))) {
-                    // If going out to the same direction as coming in, check
-                    // that IVC was being maintained as 0.
-                    if (iport != TERMINAL_PORT &&
-                        in_direction == out_direction) {
-                        assert(ivc_class == 0);
+                if (r->vc_count > 1) {
+                    if ((id_in_ring == (r->top_desc.k - 1) &&
+                         ivc.route_port == get_output_port(out_direction, 1)) ||
+                        (id_in_ring == 0 &&
+                         ivc.route_port == get_output_port(out_direction, 0))) {
+                        // If going out to the same direction as coming in,
+                        // check that IVC was being maintained as 0.
+                        if (iport != TERMINAL_PORT &&
+                            in_direction == out_direction) {
+                            assert(ivc_class == 0);
+                        }
+                        ovc_class = 1;
+                        debugf(r, "VA: crossing dateline.\n");
                     }
-                    ovc_class = 1;
-                    debugf(r, "VA: crossing dateline.\n");
                 }
 
                 for (int i = 0; i < vc_per_class; i++) {
