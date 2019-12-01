@@ -10,10 +10,10 @@ Sim::Sim(bool verbose_mode, int debug_mode, Topology top, int terminal_count,
       rand_gen(terminal_count, mean_interval)
 {
     traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
-    traffic_desc.dests[0] = 2;
-    traffic_desc.dests[1] = 2;
-    traffic_desc.dests[2] = 0;
-    traffic_desc.dests[3] = 1;
+    traffic_desc.dests[0] = 4;
+    traffic_desc.dests[1] = 4;
+    traffic_desc.dests[2] = 4;
+    traffic_desc.dests[3] = 4;
 
     channel_delay = 1; /* FIXME hardcoded */
     packet_len = 4; /* FIXME hardcoded */
@@ -120,7 +120,7 @@ void sim_run_until(Sim *sim, long until)
         Event e = eventq_pop(&sim->eventq);
         if (sim->eventq.curr_time() != last_print_cycle &&
             sim->eventq.curr_time() % 100 == 0) {
-            printf("[@%3ld]\n", sim->eventq.curr_time());
+            printf("[@%3ld/%3ld]\n", sim->eventq.curr_time(), until);
             last_print_cycle = sim->eventq.curr_time();
         }
         sim_process(sim, e);
@@ -218,11 +218,11 @@ void sim_report(Sim *sim) {
     printf("\n");
 
     float interval_avg = static_cast<float>(curr_time(&sim->eventq)) /
-                         (static_cast<float>(sim->stat.packet_depart_count) /
+                         (static_cast<float>(sim->stat.packet_gen_count) /
                           static_cast<float>(sim->src_nodes.size()));
     printf("Average interval: %lf cycles\n", interval_avg);
     float hop_count_avg = static_cast<float>(sim->stat.hop_count_sum) /
-                          static_cast<float>(sim->stat.packet_depart_count);
+                          static_cast<float>(sim->stat.packet_gen_count);
     printf("Average hop count: %lf hops\n", hop_count_avg);
     float latency_avg = static_cast<float>(sim->stat.latency_sum) /
                         static_cast<float>(sim->stat.packet_arrive_count);

@@ -39,7 +39,7 @@ struct Stat {
     long double_tick_count = 0;
     std::map<PacketId, PacketTimestamp> packet_ledger;
     long latency_sum = 0;
-    long packet_depart_count = 0;
+    long packet_gen_count = 0;
     long packet_arrive_count = 0;
     long hop_count_sum = 0;
 };

@@ -56,8 +56,8 @@ int main(int argc, char **argv) {
     Sim sim{verbose, debug, top, terminal_count, router_count, radix, vc_count, mean_interval, 10};
     schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
     schedule(&sim.eventq, 0, tick_event_from_id(src_id(1)));
-    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(2)));
-    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(3)));
+    schedule(&sim.eventq, 0, tick_event_from_id(src_id(2)));
+    schedule(&sim.eventq, 0, tick_event_from_id(src_id(3)));
     // for (int i = 0; i < terminal_count; i++) {
     //     schedule(&sim.eventq, 0, tick_event_from_id(src_id(i)));
     // }

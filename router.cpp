@@ -345,7 +345,7 @@ static void source_route_compute_dimension(Router *r, TopoDesc td,
 
 
         // FIXME
-        // to_larger = 1;
+        to_larger = 1;
 
         for (int i = 0; i < cw_dist; i++) {
             path.push_back(get_output_port(direction, to_larger));
@@ -504,7 +504,7 @@ void source_generate(Router *r)
 
             // Hop count: exclude the last hop to terminal.
             r->stat->hop_count_sum += (flit->route_info.path.size() - 1);
-            r->stat->packet_depart_count++;
+            r->stat->packet_gen_count++;
 
             if (r->verbose) {
                 debugf(r, "Source route computation: %d -> %d : {",
@@ -518,12 +518,12 @@ void source_generate(Router *r)
             r->sg.flitnum++;
 
             // Set the time the next packet is generated.
-            // r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len + 10;
+            r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len;
             r->sg.next_packet_start_frac +=
                 static_cast<double>(r->packet_len) +
                 r->rand_gen.exp_dist(r->rand_gen.rd);
             // debugf(r, "next_packet_start_frac=%lf->%lf\n", old, r->sg.next_packet_start_frac);
-            r->sg.next_packet_start = std::ceil(r->sg.next_packet_start_frac);
+            // r->sg.next_packet_start = std::ceil(r->sg.next_packet_start_frac);
             // debugf(r, "scheduling at %ld\n", r->sg.next_packet_start);
             // If the interval was so short that the rounded result remains the
             // same, manually one-up it.
