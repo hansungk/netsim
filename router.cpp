@@ -490,6 +490,7 @@ void source_generate(Router *r)
 
         int ovc_num = r->src_last_grant_output;
         if (ready_flit->type == FLIT_HEAD) {
+            debugf(r, "Yes, its HEAD\n");
             // Deadlock avoidance with datelines: always start at the VCs with
             // class 0.
             int ovc_class = 0; /* always */
@@ -498,7 +499,7 @@ void source_generate(Router *r)
             int vc_per_class = (r->vc_count / r->vc_class_count);
             int ovc_in_class = (r->src_last_grant_output + 1) % vc_per_class;
             for (int i = 0; i < r->vc_class_count; i++) {
-                int ovc_num = ovc_class * vc_per_class + ovc_in_class;
+                ovc_num = ovc_class * vc_per_class + ovc_in_class;
                 OutputUnit::VC &ovc = r->output_units[TERMINAL_PORT].vcs[ovc_num];
                 // Select the first one that has credits.
                 if (ovc.credit_count > 0) {
