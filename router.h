@@ -236,11 +236,12 @@ struct OutputUnit {
 Event tick_event_from_id(Id id);
 
 struct RandomGenerator {
-    RandomGenerator(int terminal_count);
+    RandomGenerator(int terminal_count, double mean_interval);
 
     std::default_random_engine def;
     std::random_device rd;
     std::uniform_int_distribution<int> uni_dist;
+    std::exponential_distribution<> exp_dist;
 };
 
 /// A router. It can represent any of a switch node, a source node and a
@@ -253,10 +254,13 @@ struct Router {
            long input_buf_size);
     ~Router();
 
+    template <typename T> T &get_device() const;
+
     Sim &sim;           // FIXME: not pretty
     EventQueue *eventq; // reference to the simulator-global event queue
     Stat *stat;
     bool verbose;
+    bool deterministic = true;
     Id id;                      // router ID
     int radix;                  // radix
     int vc_count;               // number of VCs per channel
@@ -271,8 +275,10 @@ struct Router {
     bool reschedule_next_tick =
         false; // marks whether to self-tick at the next cycle
     struct SourceGenInfo {
+        double mean_interval = 1.0;
         bool packet_finished = true;
         long next_packet_start = 0;
+        double next_packet_start_frac = 0.0;
         long packet_counter = 0;
         long flitnum = 0; // n-th flit counter of a packet
     } sg;

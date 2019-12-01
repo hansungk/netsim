@@ -5,9 +5,9 @@
 void print_conn(const char *name, Connection conn);
 
 Sim::Sim(bool verbose_mode, int debug_mode, Topology top, int terminal_count,
-         int router_count, int radix, int vc_count, long input_buf_size)
+         int router_count, int radix, int vc_count, double mean_interval, long input_buf_size)
     : debug_mode(debug_mode), topology(top), traffic_desc(terminal_count),
-      rand_gen(terminal_count)
+      rand_gen(terminal_count, mean_interval)
 {
     // traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
     // traffic_desc.dests[0] = 2;
@@ -199,6 +199,10 @@ void sim_report(Sim *sim) {
         printf("# of flits arrived: %ld\n", dst->flit_arrive_count);
     }
 
+    float interval_avg = static_cast<float>(curr_time(&sim->eventq)) /
+                         (static_cast<float>(sim->stat.packet_num) /
+                          static_cast<float>(sim->src_nodes.size()));
+    printf("Average interval: %lf cycles\n", interval_avg);
     float latency_avg = static_cast<float>(sim->stat.latency_sum) /
                         static_cast<float>(sim->stat.packet_num);
     printf("Average latency: %lf\n", latency_avg);

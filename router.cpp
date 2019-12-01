@@ -12,10 +12,20 @@ TrafficDesc::TrafficDesc(int terminal_count)
 {
 }
 
-RandomGenerator::RandomGenerator(int terminal_count)
-    : def(), rd(), uni_dist(0, terminal_count - 1)
+RandomGenerator::RandomGenerator(int terminal_count, double mean_interval)
+    : def(), rd(), uni_dist(0, terminal_count - 1),
+      exp_dist(1.0 / mean_interval)
 {
     // TODO: seed?
+}
+
+template <typename T> T &Router::get_device() const
+{
+    if (deterministic) {
+        return rand_gen.def;
+    } else {
+        return rand_gen.rd;
+    }
 }
 
 void debugf(Router *r, const char *fmt, ...)
@@ -442,7 +452,13 @@ void source_generate(Router *r)
 
         int dest = -1;
         if (r->traffic_desc.type == TRF_UNIFORM_RANDOM) {
-            dest = r->rand_gen.uni_dist(r->rand_gen.def);
+            while (true) {
+                dest = r->rand_gen.uni_dist(r->rand_gen.rd);
+                // Retry until an ID different than mine comes up.
+                if (dest != r->id.value) {
+                    break;
+                }
+            }
             debugf(r, "Uniform random: dest=%ld\n", dest);
         } else if (r->traffic_desc.type == TRF_DESIGNATED) {
             dest = r->traffic_desc.dests[r->id.value];
@@ -471,7 +487,19 @@ void source_generate(Router *r)
             r->sg.flitnum++;
 
             // Set the time the next packet is generated.
-            r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len + 10;
+            // r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len + 10;
+            double old = r->sg.next_packet_start_frac;
+            r->sg.next_packet_start_frac +=
+                static_cast<double>(r->packet_len) +
+                r->rand_gen.exp_dist(r->rand_gen.rd);
+            debugf(r, "next_packet_start_frac=%lf->%lf\n", old, r->sg.next_packet_start_frac);
+            r->sg.next_packet_start = std::ceil(r->sg.next_packet_start_frac);
+            debugf(r, "scheduling at %ld\n", r->sg.next_packet_start);
+            // If the interval was so short that the rounded result remains the
+            // same, manually one-up it.
+            // if (r->sg.next_packet_start == r->eventq->curr_time()) {
+            //     r->sg.next_packet_start++;
+            // }
             schedule(r->eventq, r->sg.next_packet_start,
                      tick_event_from_id(r->id));
 
