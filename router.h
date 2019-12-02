@@ -246,6 +246,24 @@ struct RandomGenerator {
     std::exponential_distribution<> exp_dist;
 };
 
+struct Allocator {
+    Allocator(size_t request_size, size_t grant_size);
+    void clear();
+
+    // These are statically allocated vectors that are recycled for each
+    // allocation stage.
+
+    // Request vectors for each input VC. Has 1 request bit for each output
+    // VC.
+    std::vector<bool> request_vectors;
+    // Age vector, for age-based arbitration.
+    std::vector<long> age_vector;
+    // Input arbitration result vector, i.e. the 'x' vector in Figure 19.4.
+    std::vector<bool> x_vectors;
+    // Grant vectors.
+    std::vector<bool> grant_vectors;
+};
+
 /// A router. It can represent any of a switch node, a source node and a
 /// destination node.
 struct Sim;
@@ -290,8 +308,8 @@ struct Router {
     Flit **source_queue;                  // source queue
     std::vector<InputUnit> input_units;   // input units
     std::vector<OutputUnit> output_units; // output units
-    struct Allocator {
-    } alloc;
+    Allocator vc_allocator;     // virtual channel allocator
+    Allocator switch_allocator; // switch allocator
     int src_last_grant_output; // for round-robin arbitration
     int dst_last_grant_input; // for round-robin arbitration
     std::vector<int>
