@@ -49,18 +49,22 @@ int main(int argc, char **argv) {
         // 2 VCs in each dimension
         vc_count = 2 * r;
     } // else, overrided
-    // vc_count = 1;
 
     Topology top = topology_torus(k, r);
 
     Sim sim{verbose, debug, top, terminal_count, router_count, radix, vc_count, mean_interval, 10};
-    schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
-    schedule(&sim.eventq, 0, tick_event_from_id(src_id(1)));
-    schedule(&sim.eventq, 0, tick_event_from_id(src_id(2)));
-    schedule(&sim.eventq, 0, tick_event_from_id(src_id(3)));
-    // for (int i = 0; i < terminal_count; i++) {
-    //     schedule(&sim.eventq, 0, tick_event_from_id(src_id(i)));
-    // }
+    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(0)));
+    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(1)));
+    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(2)));
+    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(3)));
+
+    // VC vs. Wormhole (6-ary 2-torus)
+    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(19)));
+    // schedule(&sim.eventq, 0, tick_event_from_id(src_id(20)));
+
+    for (int i = 0; i < terminal_count; i++) {
+        schedule(&sim.eventq, 0, tick_event_from_id(src_id(i)));
+    }
 
     sim_run(&sim, total_cycles);
 

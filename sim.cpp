@@ -9,11 +9,17 @@ Sim::Sim(bool verbose_mode, int debug_mode, Topology top, int terminal_count,
     : debug_mode(debug_mode), topology(top), traffic_desc(terminal_count),
       rand_gen(terminal_count, mean_interval)
 {
-    traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
-    traffic_desc.dests[0] = 4;
-    traffic_desc.dests[1] = 4;
-    traffic_desc.dests[2] = 4;
-    traffic_desc.dests[3] = 4;
+    // Tornado pattern for 4-ring
+    // traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
+    // traffic_desc.dests[0] = 4;
+    // traffic_desc.dests[1] = 4;
+    // traffic_desc.dests[2] = 4;
+    // traffic_desc.dests[3] = 4;
+
+    // VC vs. Wormhole pattern (6-ary 2-torus)
+    // traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
+    // traffic_desc.dests[19] = 22;
+    // traffic_desc.dests[20] = 15;
 
     channel_delay = 1; /* FIXME hardcoded */
     packet_len = 4; /* FIXME hardcoded */
@@ -206,7 +212,7 @@ void sim_report(Sim *sim) {
     for (size_t i = 0; i < sim->src_nodes.size(); i++) {
         Router *src = sim->src_nodes[i].get();
         printf("[%s] ", id_str(src->id, s));
-        printf("# of flits generated: %ld\n", src->flit_depart_count);
+        printf("# of flits departed: %ld\n", src->flit_depart_count);
     }
 
     for (size_t i = 0; i < sim->dst_nodes.size(); i++) {

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <random>
+#include <climits>
 
 TrafficDesc::TrafficDesc(int terminal_count)
     : type(TRF_UNIFORM_RANDOM), dests(terminal_count)
@@ -323,7 +324,7 @@ static void source_route_compute_dimension(Router *r, TopoDesc td,
     int cw_dist = (dst_id_xyz - src_id_xyz + total) % total;
 
     if ((total % 2) == 0 && cw_dist == (total / 2)) {
-        int dice = r->rand_gen.uni_dist(r->rand_gen.def);
+        int dice = r->rand_gen.uni_dist(r->rand_gen.rd);
         int to_larger = (dice % 2 == 0) ? 1 : 0;
 
         // Adaptive routing
@@ -344,8 +345,8 @@ static void source_route_compute_dimension(Router *r, TopoDesc td,
         // printf("adaptive routed to %d\n", get_output_port(direction, to_larger));
 
 
-        // FIXME
-        to_larger = 1;
+        // FIXME VC vs. Wormhole
+        // to_larger = 1;
 
         for (int i = 0; i < cw_dist; i++) {
             path.push_back(get_output_port(direction, to_larger));
@@ -487,10 +488,10 @@ void source_generate(Router *r)
             // Head flit
             //
             if (r->eventq->curr_time() != r->sg.next_packet_start) {
-                warnf(r,
-                      "WARN: Head flit not generated at the scheduled "
-                      "time=%ld!\n",
-                      r->sg.next_packet_start);
+                debugf(r,
+                       "WARN: Head flit not generated at the scheduled "
+                       "time=%ld!\n",
+                       r->sg.next_packet_start);
             }
 
             //
@@ -518,18 +519,21 @@ void source_generate(Router *r)
             r->sg.flitnum++;
 
             // Set the time the next packet is generated.
-            r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len;
-            r->sg.next_packet_start_frac +=
+            //
+            // Fixed interval:
+            // r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len;
+            //
+            // Poisson process:
+            double next_packet_start_frac =
+                static_cast<double>(r->eventq->curr_time()) +
                 static_cast<double>(r->packet_len) +
                 r->rand_gen.exp_dist(r->rand_gen.rd);
-            // debugf(r, "next_packet_start_frac=%lf->%lf\n", old, r->sg.next_packet_start_frac);
-            // r->sg.next_packet_start = std::ceil(r->sg.next_packet_start_frac);
-            // debugf(r, "scheduling at %ld\n", r->sg.next_packet_start);
-            // If the interval was so short that the rounded result remains the
-            // same, manually one-up it.
-            // if (r->sg.next_packet_start == r->eventq->curr_time()) {
-            //     r->sg.next_packet_start++;
+            r->sg.next_packet_start = std::lround(next_packet_start_frac);
+            // if (r->sg.next_packet_start < r->eventq->curr_time() + r->packet_len) {
+            //     printf("nah\n");
+            //     r->sg.next_packet_start = r->eventq->curr_time() + r->packet_len;
             // }
+            // debugf(r, "scheduling at %ld\n", r->sg.next_packet_start);
             schedule(r->eventq, r->sg.next_packet_start,
                      tick_event_from_id(r->id));
 
@@ -560,7 +564,7 @@ void source_generate(Router *r)
         debugf(r, "Flit generated: %s\n", flit_str(flit, s));
         debugf(r, "Source queue len=%ld\n", queue_len(r->source_queue));
     } else if (queue_full(r->source_queue)) {
-        warnf(r, "WARN: source queue full!\n");
+        debugf(r, "WARN: source queue full!\n");
     }
 
     // After exiting the source queue.
@@ -687,14 +691,16 @@ void destination_consume(Router *r)
     Channel *ich = r->input_channels[TERMINAL_PORT];
     std::vector<long> vc_nums{ivc_num};
 
-    // FIXME?
-    Credit *credit = new Credit{vc_nums};
-    channel_put_credit(ich, credit);
-    RouterPortPair src_pair = ich->conn.src;
-    RouterPortPair dst_pair = ich->conn.dst;
-    debugf(r, "Credit sent via VC%d from {%s, %d} to {%s, %d}\n", ivc_num,
-           id_str(dst_pair.id, s), dst_pair.port,
-           id_str(src_pair.id, s2), src_pair.port);
+    // false: VC vs. Wormhole showcase mode
+    if (true || (r->id.value != 22)) {
+        Credit *credit = new Credit{vc_nums};
+        channel_put_credit(ich, credit);
+        RouterPortPair src_pair = ich->conn.src;
+        RouterPortPair dst_pair = ich->conn.dst;
+        debugf(r, "Credit sent via VC%d from {%s, %d} to {%s, %d}\n", ivc_num,
+               id_str(dst_pair.id, s), dst_pair.port, id_str(src_pair.id, s2),
+               src_pair.port);
+    }
 
     // Self-tick autonomously unless all input ports are empty.
     r->reschedule_next_tick = true;
@@ -960,6 +966,56 @@ size_t round_robin_arbitration(size_t req_size, size_t grant_size, size_t which,
     return -1;
 }
 
+// Only makes sense for the output arbitration.
+size_t age_based_arbitration(size_t req_size, size_t grant_size, size_t which,
+                             bool is_input_stage, size_t last_grant,
+                             const std::vector<bool> &request_vectors,
+                             std::vector<bool> &grant_vectors,
+                             const std::vector<long> &age_vector)
+{
+    assert(!is_input_stage);
+    size_t arbit_size = is_input_stage ? grant_size : req_size;
+
+    // Clear the grant vector first.
+    for (size_t i = 0; i < arbit_size; i++) {
+        if (is_input_stage) {
+            grant_vectors[alloc_vector_pos(grant_size, which, i)] = false;
+        } else {
+            grant_vectors[alloc_vector_pos(grant_size, i, which)] = false;
+        }
+    }
+
+    // Find the request with oldest packet.
+    long min_birth = LONG_MAX;
+    size_t min_so_far = 0;
+    long howmany = 0;
+    for (size_t i = 0; i < arbit_size; i++) {
+        size_t cand_pos;
+        if (is_input_stage) {
+            cand_pos = alloc_vector_pos(grant_size, which, i);
+        } else {
+            cand_pos = alloc_vector_pos(grant_size, i, which);
+        }
+
+        if (request_vectors[cand_pos]) {
+            howmany++;
+            long birth = age_vector[i];
+            if (birth < min_birth) {
+                min_birth = birth;
+                min_so_far = cand_pos;
+            }
+        }
+    }
+
+    if (min_birth != LONG_MAX) {
+        grant_vectors[min_so_far] = true;
+        return min_so_far;
+    }
+
+    // Indicates that there was no request.
+    return -1;
+}
+
 // Virtual channel allocation stage.
 // Performs a (# of total input VCs) X (# of total output VCs) allocation.
 void vc_alloc(Router *r)
@@ -974,6 +1030,8 @@ void vc_alloc(Router *r)
     size_t vector_size = total_vc * total_vc;
     // Request vectors for each input VC. Has 1 request bit for each output VC.
     std::vector<bool> request_vectors(vector_size, false);
+    // Age vector, for age-based arbitration.
+    std::vector<long> age_vector(total_vc, LONG_MAX);
     // Input arbitration result vector, i.e. the 'x' vector in Figure 19.4.
     std::vector<bool> x_vectors(vector_size, false);
     // Grant vectors.
@@ -983,13 +1041,17 @@ void vc_alloc(Router *r)
     for (int iport = 0; iport < r->radix; iport++) {
         for (int ivc_num = 0; ivc_num < r->vc_count; ivc_num++) {
             InputUnit::VC &ivc = r->input_units[iport].vcs[ivc_num];
+
             if (ivc.global == STATE_VCWAIT) {
                 assert(ivc.route_port >= 0);
                 size_t global_ivc = iport * r->vc_count + ivc_num;
                 size_t global_ovc_base = ivc.route_port * r->vc_count;
                 assert(global_ivc < total_vc);
                 assert(global_ovc_base < total_vc);
-                // Assert request for all output VCs of the routed oport.
+
+                // Record ages.
+                assert(!queue_empty(ivc.buf));
+                age_vector[global_ivc] = queue_front(ivc.buf)->packet_id.id;
 
                 //
                 // Deadlock avoidance: Datelines.
@@ -1067,6 +1129,9 @@ void vc_alloc(Router *r)
             size_t winner = round_robin_arbitration(
                 total_vc, total_vc, global_ovc, false,
                 r->va_last_grant_output[global_ovc], x_vectors, grant_vectors);
+            // size_t winner = age_based_arbitration(
+            //     total_vc, total_vc, global_ovc, false,
+            //     r->va_last_grant_output[global_ovc], x_vectors, grant_vectors, age_vector);
             if (winner != static_cast<size_t>(-1)) {
                 r->va_last_grant_output[global_ovc] = (winner / total_vc);
             }
@@ -1136,6 +1201,8 @@ void switch_alloc(Router *r)
     size_t vector_size = total_vc * r->radix;
     // Request vectors for each input VC. Has 1 request bit for each output VC.
     std::vector<bool> request_vectors(vector_size, false);
+    // Age vector, for age-based arbitration.
+    std::vector<long> age_vector(total_vc, LONG_MAX);
     // Input arbitration result vector, i.e. the 'x' vector in Figure 19.4.
     std::vector<bool> x_vectors(vector_size, false);
     // Grant vectors.
@@ -1145,12 +1212,17 @@ void switch_alloc(Router *r)
     for (int iport = 0; iport < r->radix; iport++) {
         for (int ivc_num = 0; ivc_num < r->vc_count; ivc_num++) {
             InputUnit::VC &ivc = r->input_units[iport].vcs[ivc_num];
+
             if (ivc.stage == PIPELINE_SA && ivc.global == STATE_ACTIVE &&
                 !queue_empty(ivc.buf)) {
                 assert(ivc.route_port >= 0);
                 size_t global_ivc = iport * r->vc_count + ivc_num;
                 size_t oport = ivc.route_port;
                 assert(global_ivc < total_vc);
+
+                // Record ages.
+                age_vector[global_ivc] = queue_front(ivc.buf)->packet_id.id;
+
                 // Assert request for the routed oport.
                 // NOTE: No output speedup.
                 request_vectors[alloc_vector_pos(r->radix, global_ivc, oport)] =
@@ -1193,6 +1265,9 @@ void switch_alloc(Router *r)
             size_t winner = round_robin_arbitration(
                 total_vc, r->radix, oport, false,
                 r->sa_last_grant_output[oport], x_vectors, grant_vectors);
+            // size_t winner = age_based_arbitration(
+            //     total_vc, r->radix, oport, false,
+            //     r->sa_last_grant_output[oport], x_vectors, grant_vectors, age_vector);
             if (winner != static_cast<size_t>(-1)) {
                 // Now check if the selected OVC is fortunate.
                 assert(winner < vector_size);
@@ -1386,6 +1461,9 @@ void router_print_state(Router *r)
     for (int i = 0; i < r->radix; i++) {
         for (int ivc_num = 0; ivc_num < r->vc_count; ivc_num++) {
             InputUnit::VC &ivc = r->input_units[i].vcs[ivc_num];
+            if (ivc.route_port == -1 && ivc.output_vc == -1) {
+                continue;
+            }
             printf(" Input[%d,VC%d]: [%s] R=%2d, OVC=%2d {", i, ivc_num,
                     globalstate_str(ivc.global, s), ivc.route_port,
                     ivc.output_vc);
@@ -1401,6 +1479,9 @@ void router_print_state(Router *r)
     for (int i = 0; i < r->radix; i++) {
         for (int ovc_num = 0; ovc_num < r->vc_count; ovc_num++) {
             OutputUnit::VC &ovc = r->output_units[i].vcs[ovc_num];
+            if (ovc.input_port == -1 && ovc.input_vc == -1) {
+                continue;
+            }
             printf("Output[%d,VC%d]: [%s] I=%2d, IVC=%2d, C=%2d\n", i, ovc_num,
                     globalstate_str(ovc.global, s), ovc.input_port,
                     ovc.input_vc, ovc.credit_count);
@@ -1409,6 +1490,9 @@ void router_print_state(Router *r)
 
     for (int i = 0; i < r->radix; i++) {
         Channel *ch = r->input_channels[i];
+        if (queue_empty(ch->buf)) {
+            continue;
+        }
         printf("InChannel[%d]: {", i);
         for (long i = queue_fronti(ch->buf); i != queue_backi(ch->buf);
              i = (i + 1) % queue_cap(ch->buf)) {

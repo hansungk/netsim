@@ -8,11 +8,9 @@
 - Benefits of VC-based flow control compared to wormhole
 - Parking lot problem
 - Load imbalancing of XY-routing
-- Age-based priority?
-
-* Showcasing
 - Event-driven: show simulator does not progress further after
   deadlock
+- Age-based priority?
 
 * Questions
 - VC: increases switch input/output ports? => This is what input speedup is.
