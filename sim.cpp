@@ -11,10 +11,10 @@ Sim::Sim(bool verbose_mode, int debug_mode, Topology top, int terminal_count,
 {
     // Tornado pattern for 4-ring
     // traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
-    // traffic_desc.dests[0] = 4;
-    // traffic_desc.dests[1] = 4;
-    // traffic_desc.dests[2] = 4;
-    // traffic_desc.dests[3] = 4;
+    // traffic_desc.dests[0] = 2;
+    // traffic_desc.dests[1] = 3;
+    // traffic_desc.dests[2] = 0;
+    // traffic_desc.dests[3] = 1;
 
     // VC vs. Wormhole pattern (6-ary 2-torus)
     // traffic_desc = {TRF_DESIGNATED, std::vector<int>(terminal_count)};
@@ -192,6 +192,29 @@ void sim_run(Sim *sim, long until)
     }
 }
 
+void channel_xy_load(Sim *sim) {
+    // Determine the direction of this channel.
+    for (auto &ch : sim->channels) {
+        auto src = ch.conn.src.id;
+        auto dst = ch.conn.dst.id;
+
+        // Skip terminal channels.
+        if (is_src(src) || is_dst(src) || is_src(dst) || is_dst(dst)) {
+            continue;
+        }
+
+        int dimension = 0;
+        for (; dimension < sim->topology.desc.r; dimension++) {
+            int src_id = torus_id_xyz_get(ch.conn.src.id.value, sim->topology.desc.k, dimension);
+            int dst_id = torus_id_xyz_get(ch.conn.dst.id.value, sim->topology.desc.k, dimension);
+            if (src_id == dst_id) {
+                break;
+            }
+        }
+        printf("channel direction=%d, load=%ld\n", dimension, ch.load_count);
+    }
+}
+
 void sim_report(Sim *sim) {
     char s[IDSTRLEN];
 
@@ -233,6 +256,8 @@ void sim_report(Sim *sim) {
     float latency_avg = static_cast<float>(sim->stat.latency_sum) /
                         static_cast<float>(sim->stat.packet_arrive_count);
     printf("Average latency: %lf\n", latency_avg);
+
+    // channel_xy_load(sim);
 }
 
 // Process an event.

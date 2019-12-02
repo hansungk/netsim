@@ -160,7 +160,7 @@ typedef struct TimedCredit {
     Credit *credit;
 } TimedCredit;
 
-typedef struct Channel {
+struct Channel {
     Channel(EventQueue *eq, long dl, const Connection conn);
     ~Channel();
 
@@ -169,7 +169,8 @@ typedef struct Channel {
     long delay;
     TimedFlit *buf = NULL;
     std::deque<TimedCredit> buf_credit;
-} Channel;
+    long load_count = 0; // total number of flits put on this channel.
+};
 
 Channel channel_create(EventQueue *eq, long dl, const Connection conn);
 void channel_put(Channel *ch, Flit *flit);

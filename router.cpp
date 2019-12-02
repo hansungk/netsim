@@ -83,6 +83,7 @@ void channel_put(Channel *ch, Flit *flit)
     assert(!queue_full(ch->buf));
     queue_put(ch->buf, tf);
     reschedule(ch->eventq, ch->delay, tick_event_from_id(ch->conn.dst.id));
+    ch->load_count += queue_len(ch->buf);
 }
 
 void channel_put_credit(Channel *ch, Credit *credit)
@@ -773,7 +774,7 @@ void credit_update(Router *r)
             OutputUnit::VC &ovc = r->output_units[oport].vcs[ovc_num];
 
             if (ovc.buf_credit) {
-                debugf(r, "Credit update! credit=%d->%d (oport=%d)\n",
+                debugf(r, "CU: credit=%d->%d (oport=%d)\n",
                        ovc.credit_count, ovc.credit_count + 1, oport);
                 assert(ovc.input_port != -1);
                 assert(ovc.input_vc != -1);
@@ -832,7 +833,7 @@ void route_compute(Router *r)
                 // ivc.output_vc will be set in the VA stage.
 
                 char s[IDSTRLEN];
-                debugf(r, "RC success for %s (idx=%zu, oport=%d)\n",
+                debugf(r, "RC: success for %s (idx=%zu, oport=%d)\n",
                        flit_str(flit, s), flit->route_info.idx, ivc.route_port);
 
                 flit->route_info.idx++;
@@ -1083,7 +1084,7 @@ void vc_alloc(Router *r)
                             assert(ivc_class == 0);
                         }
                         ovc_class = 1;
-                        debugf(r, "VA: crossing dateline.\n");
+                        debugf(r, "VA: crossing dateline. Reallocating VC=%d->%d.\n", ivc_class, ovc_class);
                     }
                 }
 
@@ -1398,7 +1399,7 @@ void switch_traverse(Router *r)
 
                 debugf(
                     r,
-                    "Switch traverse: %s sent via VC%d from {%s, %d} to {%s, "
+                    "ST: %s sent via VC%d from {%s, %d} to {%s, "
                     "%d}\n",
                     flit_str(flit, s), ivc.output_vc, id_str(src_pair.id, s2),
                     src_pair.port, id_str(dst_pair.id, s3), dst_pair.port);

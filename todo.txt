@@ -1,16 +1,18 @@
 -*- org -*-
 
 * TODO
-- Deadlock avoidance
+- Deadlock avoidance => 1 time
   - Dedicated/free VCs
-- Latency vs. offerred traffic curve
+- Latency vs. offerred traffic curve => MANY times
   - For torus: Figure 23.4
-- Benefits of VC-based flow control compared to wormhole
-- Parking lot problem
-- Load imbalancing of XY-routing
-- Event-driven: show simulator does not progress further after
+- Parking lot problem => 1 time
+- Pipeline diagram? => 1 time
+- XY routing (minimal, oblivious)
+- Load imbalancing of XY-routing => impl. + 1 time
+- Event-driven: show simulator does not progress further after => 1 time
   deadlock
-- Age-based priority?
+X Benefits of VC-based flow control compared to wormhole
+X Age-based priority?
 
 * Questions
 - VC: increases switch input/output ports? => This is what input speedup is.
