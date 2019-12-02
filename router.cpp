@@ -243,8 +243,6 @@ Router::Router(Sim &sim, EventQueue *eq, Stat *st, bool verbose, Id id,
     : sim(sim), eventq(eq), stat(st), verbose(verbose), id(id), radix(radix),
       vc_count(vc_count), top_desc(td), traffic_desc(trd), rand_gen(rg),
       packet_len(packet_len), input_buf_size(input_buf_size),
-      vc_allocator(radix * vc_count, radix * vc_count),
-      switch_allocator(radix * vc_count, radix),
       src_last_grant_output(0), dst_last_grant_input(0),
       va_last_grant_input(radix * vc_count, 0),
       va_last_grant_output(radix * vc_count, 0),
@@ -1029,10 +1027,15 @@ void vc_alloc(Router *r)
     // FIXME: PERFORMANCE!
 
     size_t total_vc = r->radix * r->vc_count;
-    size_t vector_size = r->vc_allocator.request_vectors.size();
-    auto &va = r->vc_allocator;
-
-    va.clear();
+    size_t vector_size = total_vc * total_vc;
+    // Request vectors for each input VC. Has 1 request bit for each output VC.
+    std::vector<bool> request_vectors(vector_size, false);
+    // Age vector, for age-based arbitration.
+    std::vector<long> age_vector(total_vc, LONG_MAX);
+    // Input arbitration result vector, i.e. the 'x' vector in Figure 19.4.
+    std::vector<bool> x_vectors(vector_size, false);
+    // Grant vectors.
+    std::vector<bool> grant_vectors(vector_size, false);
 
     // Step 0: Prepare request vectors.
     for (int iport = 0; iport < r->radix; iport++) {
@@ -1048,7 +1051,7 @@ void vc_alloc(Router *r)
 
                 // Record ages.
                 assert(!queue_empty(ivc.buf));
-                va.age_vector[global_ivc] = queue_front(ivc.buf)->packet_id.id;
+                age_vector[global_ivc] = queue_front(ivc.buf)->packet_id.id;
 
                 //
                 // Deadlock avoidance: Datelines.
@@ -1086,7 +1089,7 @@ void vc_alloc(Router *r)
 
                 for (int i = 0; i < vc_per_class; i++) {
                     int ovc_num = ovc_class * vc_per_class + i;
-                    va.request_vectors[alloc_vector_pos(
+                    request_vectors[alloc_vector_pos(
                         total_vc, global_ivc,
                         global_ovc_base + ovc_num)] = true;
                     debugf(r,
@@ -1097,7 +1100,7 @@ void vc_alloc(Router *r)
 
                 // For non-torus topologies:
                 // for (int i = 0; i < r->vc_count; i++) {
-                //     va.request_vectors[alloc_vector_pos(total_vc, global_ivc,
+                //     request_vectors[alloc_vector_pos(total_vc, global_ivc,
                 //                                      global_ovc_base + i)] =
                 //     true;
                 // }
@@ -1109,7 +1112,7 @@ void vc_alloc(Router *r)
     for (size_t global_ivc = 0; global_ivc < total_vc; global_ivc++) {
         size_t winner = round_robin_arbitration(
             total_vc, total_vc, global_ivc, true,
-            r->va_last_grant_input[global_ivc], va.request_vectors, va.x_vectors);
+            r->va_last_grant_input[global_ivc], request_vectors, x_vectors);
         if (winner != static_cast<size_t>(-1)) {
             r->va_last_grant_input[global_ivc] = (winner % total_vc);
         }
@@ -1125,10 +1128,10 @@ void vc_alloc(Router *r)
         if (ovc.global == STATE_IDLE) {
             size_t winner = round_robin_arbitration(
                 total_vc, total_vc, global_ovc, false,
-                r->va_last_grant_output[global_ovc], va.x_vectors, va.grant_vectors);
+                r->va_last_grant_output[global_ovc], x_vectors, grant_vectors);
             // size_t winner = age_based_arbitration(
             //     total_vc, total_vc, global_ovc, false,
-            //     r->va_last_grant_output[global_ovc], va.x_vectors, va.grant_vectors, va.age_vector);
+            //     r->va_last_grant_output[global_ovc], x_vectors, grant_vectors, age_vector);
             if (winner != static_cast<size_t>(-1)) {
                 r->va_last_grant_output[global_ovc] = (winner / total_vc);
             }
@@ -1138,7 +1141,7 @@ void vc_alloc(Router *r)
     // Step 3: Update states for the granted VAs.
     int num_grant = 0;
     for (size_t i = 0; i < vector_size; i++) {
-        if (va.grant_vectors[i]) {
+        if (grant_vectors[i]) {
             size_t global_ivc = i / total_vc;
             size_t global_ovc = i % total_vc;
             int iport = global_ivc / r->vc_count;
@@ -1183,26 +1186,6 @@ void vc_alloc(Router *r)
     // debugf(r, "VA: granted to %d input VCs.\n", num_grant);
 }
 
-Allocator::Allocator(size_t request_size, size_t grant_size)
-    : request_vectors(request_size * grant_size, false),
-      age_vector(request_size, LONG_MAX),
-      x_vectors(request_size * grant_size, false),
-      grant_vectors(request_size * grant_size, false)
-{
-}
-
-void Allocator::clear()
-{
-    for (size_t i = 0; i < request_vectors.size(); i++) {
-        request_vectors[i] = false;
-        x_vectors[i] = false;
-        grant_vectors[i] = false;
-    }
-    for (auto &l : age_vector) {
-        l = LONG_MAX;
-    }
-}
-
 // Switch allocation.
 // Performs a (# of total input VCs) X (# radix) allocation.
 // This is because the switch has no output speedup.
@@ -1215,10 +1198,15 @@ void switch_alloc(Router *r)
     // FIXME: PERFORMANCE!
 
     size_t total_vc = r->radix * r->vc_count;
-    size_t vector_size = r->switch_allocator.request_vectors.size();
-    auto &sa = r->switch_allocator;
-
-    sa.clear();
+    size_t vector_size = total_vc * r->radix;
+    // Request vectors for each input VC. Has 1 request bit for each output VC.
+    std::vector<bool> request_vectors(vector_size, false);
+    // Age vector, for age-based arbitration.
+    std::vector<long> age_vector(total_vc, LONG_MAX);
+    // Input arbitration result vector, i.e. the 'x' vector in Figure 19.4.
+    std::vector<bool> x_vectors(vector_size, false);
+    // Grant vectors.
+    std::vector<bool> grant_vectors(vector_size, false);
 
     // Step 0: Prepare request vectors.
     for (int iport = 0; iport < r->radix; iport++) {
@@ -1233,11 +1221,11 @@ void switch_alloc(Router *r)
                 assert(global_ivc < total_vc);
 
                 // Record ages.
-                sa.age_vector[global_ivc] = queue_front(ivc.buf)->packet_id.id;
+                age_vector[global_ivc] = queue_front(ivc.buf)->packet_id.id;
 
                 // Assert request for the routed oport.
                 // NOTE: No output speedup.
-                sa.request_vectors[alloc_vector_pos(r->radix, global_ivc, oport)] =
+                request_vectors[alloc_vector_pos(r->radix, global_ivc, oport)] =
                     true;
             }
             // else if (ivc.stage == PIPELINE_SA &&
@@ -1252,7 +1240,7 @@ void switch_alloc(Router *r)
     for (size_t global_ivc = 0; global_ivc < total_vc; global_ivc++) {
         size_t winner = round_robin_arbitration(
             total_vc, r->radix, global_ivc, true,
-            r->sa_last_grant_input[global_ivc], sa.request_vectors, sa.x_vectors);
+            r->sa_last_grant_input[global_ivc], request_vectors, x_vectors);
         if (winner != static_cast<size_t>(-1)) {
             r->sa_last_grant_input[global_ivc] = (winner % r->radix);
         }
@@ -1276,7 +1264,7 @@ void switch_alloc(Router *r)
 
             size_t winner = round_robin_arbitration(
                 total_vc, r->radix, oport, false,
-                r->sa_last_grant_output[oport], sa.x_vectors, sa.grant_vectors);
+                r->sa_last_grant_output[oport], x_vectors, grant_vectors);
             // size_t winner = age_based_arbitration(
             //     total_vc, r->radix, oport, false,
             //     r->sa_last_grant_output[oport], x_vectors, grant_vectors, age_vector);
@@ -1295,7 +1283,7 @@ void switch_alloc(Router *r)
                 // If unfortunate, the 'speculative' grant turned out to be
                 // a miss. Turn off the grant bit back to false.
                 if (ovc.global != STATE_ACTIVE) {
-                    sa.grant_vectors[winner] = false;
+                    grant_vectors[winner] = false;
                     debugf(r, "SA: input arbitration picked a block OVC\n");
                 } else {
                     // FIXME: Should this be outside of this else?
@@ -1308,7 +1296,7 @@ void switch_alloc(Router *r)
     // Step 3: Update states for the granted SAs.
     int num_grant = 0;
     for (size_t i = 0; i < vector_size; i++) {
-        if (sa.grant_vectors[i]) {
+        if (grant_vectors[i]) {
             size_t global_ivc = i / r->radix;
             int oport = i % r->radix;
             int iport = global_ivc / r->vc_count;
